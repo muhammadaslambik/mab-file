@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../file_manager/application/file_manager_state.dart';
+import '../file_manager/presentation/widgets/glyph.dart';
 import 'vault_service.dart';
 
 final vaultProvider = Provider<VaultService>((_) => VaultService());
@@ -66,10 +67,12 @@ class _VaultPageState extends ConsumerState<VaultPage> {
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.lock_outline, size: 56),
+              const BrandLogo(size: 84),
               const SizedBox(height: 16),
               Text(_setUp! ? 'Buka Secure Vault' : 'Buat PIN Vault',
-                  style: Theme.of(context).textTheme.titleLarge),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              const Text('Terenkripsi AES-256 • hanya di perangkat ini', style: TextStyle(fontSize: 12)),
               const SizedBox(height: 16),
               TextField(
                 controller: _pin,

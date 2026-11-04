@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
@@ -7,6 +9,8 @@ import '../data/file_service.dart';
 import '../domain/file_item.dart';
 
 enum SortMode { name, size, date }
+
+enum ViewMode { details, grid }
 
 class FmState {
   const FmState({
@@ -19,7 +23,10 @@ class FmState {
     this.sort = SortMode.name,
     this.filter,
     this.query = '',
-    this.grid = false,
+    this.view = ViewMode.details,
+    this.asc = true,
+    this.canBack = false,
+    this.canForward = false,
     this.showHidden = false,
     this.loading = false,
     this.error,
@@ -34,10 +41,14 @@ class FmState {
   final SortMode sort;
   final FileCategory? filter;
   final String query;
-  final bool grid, showHidden, loading;
+  final ViewMode view;
+  final bool asc, canBack, canForward, showHidden, loading;
   final String? error;
 
   bool get selecting => selected.isNotEmpty;
+
+  List<FileItem> get selectedItems =>
+      visible.where((i) => selected.contains(i.path)).toList();
 
   List<FileItem> get visible {
     final base = results ?? items;
@@ -59,7 +70,10 @@ class FmState {
     FileCategory? filter,
     bool clearFilter = false,
     String? query,
-    bool? grid,
+    ViewMode? view,
+    bool? asc,
+    bool? canBack,
+    bool? canForward,
     bool? showHidden,
     bool? loading,
     String? error,
@@ -75,7 +89,10 @@ class FmState {
         sort: sort ?? this.sort,
         filter: clearFilter ? null : (filter ?? this.filter),
         query: query ?? this.query,
-        grid: grid ?? this.grid,
+        view: view ?? this.view,
+        asc: asc ?? this.asc,
+        canBack: canBack ?? this.canBack,
+        canForward: canForward ?? this.canForward,
         showHidden: showHidden ?? this.showHidden,
         loading: loading ?? this.loading,
         error: clearError ? null : (error ?? this.error),
@@ -88,7 +105,8 @@ final archiveServiceProvider = Provider<ArchiveService>((_) => ArchiveService())
 final fmProvider = NotifierProvider<FmController, FmState>(FmController.new);
 
 class FmController extends Notifier<FmState> {
-  final List<String> _history = [];
+  final List<String> _back = [];
+  final List<String> _fwd = [];
   FileService get _fs => ref.read(fileServiceProvider);
 
   @override
@@ -99,20 +117,53 @@ class FmController extends Notifier<FmState> {
 
   // ---- navigasi ----
   Future<void> open(String path, {bool push = true}) async {
-    if (push && state.path.isNotEmpty) _history.add(state.path);
-    await _load(path);
+    final from = state.path;
+    if (!await _load(path)) return;
+    if (push && from.isNotEmpty && from != path) {
+      _back.add(from);
+      _fwd.clear();
+    }
+    _syncNav();
   }
 
   Future<bool> back() async {
-    if (_history.isEmpty) return false;
-    await _load(_history.removeLast());
+    if (_back.isEmpty) return false;
+    final from = state.path;
+    if (await _load(_back.last)) {
+      _back.removeLast();
+      _fwd.add(from);
+      _syncNav();
+    }
     return true;
+  }
+
+  Future<void> forward() async {
+    if (_fwd.isEmpty) return;
+    final from = state.path;
+    if (await _load(_fwd.last)) {
+      _fwd.removeLast();
+      _back.add(from);
+      _syncNav();
+    }
+  }
+
+  void _syncNav() => state =
+      state.copyWith(canBack: _back.isNotEmpty, canForward: _fwd.isNotEmpty);
+
+  /// Dari kolom alamat yang diketik manual.
+  Future<void> openPath(String text) async {
+    final t = text.trim();
+    if (t.isNotEmpty && await Directory(t).exists()) {
+      await open(t);
+    } else {
+      state = state.copyWith(error: 'Folder tidak ditemukan: $t');
+    }
   }
 
   Future<void> up() => open(p.dirname(state.path));
   Future<void> refresh() => _load(state.path);
 
-  Future<void> _load(String path) async {
+  Future<bool> _load(String path) async {
     state = state.copyWith(loading: true, clearError: true);
     try {
       final items = await _fs.list(path, showHidden: state.showHidden);
@@ -124,8 +175,10 @@ class FmController extends Notifier<FmState> {
         clearResults: true,
         query: '',
       );
+      return true;
     } catch (e) {
       state = state.copyWith(loading: false, error: 'Gagal membuka folder: $e');
+      return false;
     }
   }
 
@@ -133,27 +186,32 @@ class FmController extends Notifier<FmState> {
     final c = [...l];
     c.sort((a, b) {
       if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
-      switch (m) {
-        case SortMode.size:
-          return b.size.compareTo(a.size);
-        case SortMode.date:
-          return b.modified.compareTo(a.modified);
-        case SortMode.name:
-          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      }
+      final r = switch (m) {
+        SortMode.size => a.size.compareTo(b.size),
+        SortMode.date => a.modified.compareTo(b.modified),
+        SortMode.name => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      };
+      return state.asc ? r : -r;
     });
     return c;
   }
 
-  void setSort(SortMode m) =>
-      state = state.copyWith(sort: m, items: _sorted(state.items, m));
-  void toggleGrid() => state = state.copyWith(grid: !state.grid);
+  void setSort(SortMode m) {
+    // klik kolom yang sama -> balik arah (seperti Explorer)
+    final asc = m == state.sort ? !state.asc : (m == SortMode.name);
+    state = state.copyWith(sort: m, asc: asc);
+    state = state.copyWith(items: _sorted(state.items, m));
+  }
+
+  void setView(ViewMode v) => state = state.copyWith(view: v);
   void toggleHidden() {
     state = state.copyWith(showHidden: !state.showHidden);
     refresh();
   }
 
   // ---- seleksi ----
+  void selectOnly(String path) => state = state.copyWith(selected: {path});
+
   void toggleSelect(String path) {
     final s = {...state.selected};
     s.contains(path) ? s.remove(path) : s.add(path);
@@ -207,6 +265,7 @@ class FmController extends Notifier<FmState> {
   }
 
   void setFilter(FileCategory? c) {
+    if (c == state.filter) c = null; // tap lagi = matikan filter
     state = c == null ? state.copyWith(clearFilter: true) : state.copyWith(filter: c);
     if (state.results != null) search(state.query);
   }

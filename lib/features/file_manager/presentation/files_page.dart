@@ -1,76 +1,25 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../archive/archive_service.dart';
-import '../../vault/vault_page.dart';
-import '../../viewer/viewers.dart';
+import '../../storage/storage_analyzer.dart';
 import '../application/file_manager_state.dart';
-import '../domain/file_item.dart';
+import 'file_actions.dart';
+import 'widgets/file_views.dart';
+import 'widgets/toolbar.dart';
 
-IconData iconFor(FileCategory c) => switch (c) {
-      FileCategory.folder => Icons.folder,
-      FileCategory.image => Icons.image_outlined,
-      FileCategory.video => Icons.movie_outlined,
-      FileCategory.audio => Icons.audiotrack_outlined,
-      FileCategory.apk => Icons.android,
-      FileCategory.archive => Icons.archive_outlined,
-      FileCategory.code => Icons.description_outlined,
-      FileCategory.document => Icons.picture_as_pdf_outlined,
-      FileCategory.other => Icons.insert_drive_file_outlined,
-    };
-
-Future<String?> askText(BuildContext c, String title, {String initial = ''}) {
-  final ctl = TextEditingController(text: initial);
-  return showDialog<String>(
-    context: c,
-    builder: (_) => AlertDialog(
-      title: Text(title),
-      content: TextField(controller: ctl, autofocus: true, onSubmitted: (v) => Navigator.pop(c, v)),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Batal')),
-        FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('OK')),
-      ],
-    ),
-  );
-}
-
-class FilesPage extends ConsumerWidget {
-  const FilesPage({super.key});
-
-  void _open(BuildContext ctx, WidgetRef ref, FileItem it) {
-    if (it.isDir) {
-      ref.read(fmProvider.notifier).open(it.path);
-      return;
-    }
-    Widget? page;
-    switch (it.category) {
-      case FileCategory.image:
-        page = ImageViewerPage(path: it.path);
-      case FileCategory.video || FileCategory.audio:
-        page = MediaPage(path: it.path);
-      case FileCategory.code:
-        page = TextEditorPage(path: it.path);
-      case FileCategory.archive:
-        ref.read(fmProvider.notifier).extractHere(it.path);
-        return;
-      default:
-        ScaffoldMessenger.of(ctx).showSnackBar(
-            const SnackBar(content: Text('Belum ada viewer bawaan untuk tipe ini')));
-        return;
-    }
-    final target = page;
-    Navigator.push(ctx, MaterialPageRoute(builder: (_) => target));
-  }
+/// Tata letak desktop: toolbar -> command bar -> isi -> status bar.
+class DesktopFilesPage extends ConsumerWidget {
+  const DesktopFilesPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(fmProvider);
     final c = ref.read(fmProvider.notifier);
+    final pal = Pal.of(context);
 
     ref.listen(fmProvider.select((v) => v.error), (_, e) {
       if (e != null) {
@@ -79,42 +28,6 @@ class FilesPage extends ConsumerWidget {
       }
     });
 
-    Future<void> doRename() async {
-      final path = s.selected.first;
-      final n = await askText(context, 'Ganti nama', initial: p.basename(path));
-      if (n != null && n.isNotEmpty) await c.rename(path, n);
-    }
-
-    Future<void> doDelete() async {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: Text('Hapus ${s.selected.length} item?'),
-          content: const Text('Tindakan ini permanen.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hapus')),
-          ],
-        ),
-      );
-      if (ok == true) await c.deleteSelected();
-    }
-
-    Future<void> toVault() async {
-      final v = ref.read(vaultProvider);
-      if (!v.unlocked) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Buka tab Vault terlebih dulu')));
-        return;
-      }
-      for (final path in s.selected) {
-        if (FileSystemEntity.typeSync(path) != FileSystemEntityType.file) continue;
-        await v.addFile(path);
-      }
-      await c.refresh();
-    }
-
-    // Shortcut desktop (Ctrl/Cmd + C/X/V/A, Delete, F2, Backspace)
     Map<ShortcutActivator, VoidCallback> keys() {
       final m = <ShortcutActivator, VoidCallback>{};
       for (final (ctrl, meta) in [(true, false), (false, true)]) {
@@ -123,197 +36,187 @@ class FilesPage extends ConsumerWidget {
         m[SingleActivator(LogicalKeyboardKey.keyV, control: ctrl, meta: meta)] = c.paste;
         m[SingleActivator(LogicalKeyboardKey.keyA, control: ctrl, meta: meta)] = c.selectAll;
       }
-      m[const SingleActivator(LogicalKeyboardKey.delete)] = () { if (s.selecting) doDelete(); };
-      m[const SingleActivator(LogicalKeyboardKey.f2)] = () { if (s.selected.length == 1) doRename(); };
+      m[const SingleActivator(LogicalKeyboardKey.delete)] = () => deleteSelected(context, ref);
+      m[const SingleActivator(LogicalKeyboardKey.f2)] = () => renameSelected(context, ref);
+      m[const SingleActivator(LogicalKeyboardKey.f5)] = c.refresh;
+      m[const SingleActivator(LogicalKeyboardKey.enter)] = () => openSelected(context, ref);
       m[const SingleActivator(LogicalKeyboardKey.escape)] = c.clearSelection;
+      m[const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true)] = c.back;
+      m[const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true)] = c.forward;
+      m[const SingleActivator(LogicalKeyboardKey.arrowUp, alt: true)] = c.up;
       return m;
     }
 
-    final cs = Theme.of(context).colorScheme;
-    final items = s.visible;
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (s.selecting) {
-          c.clearSelection();
-        } else if (!await c.back() && context.mounted) {
-          SystemNavigator.pop();
-        }
-      },
-      child: CallbackShortcuts(
-        bindings: keys(),
-        child: Focus(
-          autofocus: true,
-          child: Scaffold(
-            appBar: s.selecting
-                ? AppBar(
-                    leading: IconButton(icon: const Icon(Icons.close), onPressed: c.clearSelection),
-                    title: Text('${s.selected.length} dipilih'),
-                    actions: [
-                      IconButton(tooltip: 'Salin', icon: const Icon(Icons.copy), onPressed: c.copy),
-                      IconButton(tooltip: 'Potong', icon: const Icon(Icons.content_cut), onPressed: c.cutSelected),
-                      if (s.selected.length == 1)
-                        IconButton(tooltip: 'Ganti nama', icon: const Icon(Icons.drive_file_rename_outline), onPressed: doRename),
-                      IconButton(tooltip: 'Hapus', icon: const Icon(Icons.delete_outline), onPressed: doDelete),
-                      PopupMenuButton<String>(
-                        onSelected: (v) {
-                          switch (v) {
-                            case 'zip': c.compress(ArchiveFormat.zip);
-                            case 'tar': c.compress(ArchiveFormat.tar);
-                            case 'tgz': c.compress(ArchiveFormat.tarGz);
-                            case 'all': c.selectAll();
-                            case 'vault': toVault();
-                          }
-                        },
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: 'all', child: Text('Pilih semua')),
-                          PopupMenuItem(value: 'zip', child: Text('Kompres ZIP')),
-                          PopupMenuItem(value: 'tar', child: Text('Kompres TAR')),
-                          PopupMenuItem(value: 'tgz', child: Text('Kompres TAR.GZ')),
-                          PopupMenuItem(value: 'vault', child: Text('Pindah ke Vault')),
-                        ],
-                      ),
-                    ],
-                  )
-                : AppBar(
-                    leading: IconButton(icon: const Icon(Icons.arrow_upward), onPressed: c.up),
-                    title: Text(s.path, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
-                    actions: [
-                      IconButton(icon: Icon(s.grid ? Icons.view_list : Icons.grid_view), onPressed: c.toggleGrid),
-                      PopupMenuButton<SortMode>(
-                        icon: const Icon(Icons.sort),
-                        onSelected: c.setSort,
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(value: SortMode.name, child: Text('Nama')),
-                          PopupMenuItem(value: SortMode.size, child: Text('Ukuran')),
-                          PopupMenuItem(value: SortMode.date, child: Text('Tanggal')),
-                        ],
-                      ),
-                      IconButton(
-                          tooltip: 'File tersembunyi',
-                          icon: Icon(s.showHidden ? Icons.visibility : Icons.visibility_off),
-                          onPressed: c.toggleHidden),
-                      IconButton(icon: const Icon(Icons.refresh), onPressed: c.refresh),
-                    ],
-                  ),
-            floatingActionButton: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (s.clipboard.isNotEmpty)
-                FloatingActionButton.small(
-                  heroTag: 'paste',
-                  tooltip: 'Tempel (${s.clipboard.length})',
-                  onPressed: c.paste,
-                  child: const Icon(Icons.paste),
-                ),
-              const SizedBox(height: 8),
-              PopupMenuButton<String>(
-                onSelected: (v) async {
-                  final n = await askText(context, v == 'dir' ? 'Folder baru' : 'File baru');
-                  if (n == null || n.isEmpty) return;
-                  v == 'dir' ? c.newFolder(n) : c.newFile(n);
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'dir', child: Text('Folder baru')),
-                  PopupMenuItem(value: 'file', child: Text('File baru')),
-                ],
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(color: cs.primary, borderRadius: BorderRadius.circular(16)),
-                  child: Icon(Icons.add, color: cs.onPrimary),
-                ),
-              ),
-            ]),
-            body: Column(children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                child: SearchBar(
-                  hintText: 'Deep search di folder ini…',
-                  leading: const Icon(Icons.search),
-                  elevation: const WidgetStatePropertyAll(0),
-                  onSubmitted: c.search,
-                  trailing: [
-                    if (s.query.isNotEmpty)
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => c.search('')),
-                  ],
-                ),
-              ),
-              SizedBox(
-                height: 44,
-                child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-                  for (final cat in const <FileCategory?>[null, FileCategory.document, FileCategory.image, FileCategory.video, FileCategory.audio, FileCategory.apk, FileCategory.archive])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(cat == null ? 'Semua' : cat.name),
-                        selected: s.filter == cat,
-                        onSelected: (_) => c.setFilter(cat),
-                      ),
-                    ),
-                ]),
-              ),
-              if (s.loading) const LinearProgressIndicator(minHeight: 2),
-              Expanded(
-                child: items.isEmpty && !s.loading
-                    ? const Center(child: Text('Kosong'))
-                    : s.grid
-                        ? GridView.builder(
-                            padding: const EdgeInsets.all(12),
-                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 120, mainAxisSpacing: 8, crossAxisSpacing: 8),
-                            itemCount: items.length,
-                            itemBuilder: (_, i) => _tile(context, ref, s, items[i], grid: true),
-                          )
-                        : ListView.builder(
-                            itemCount: items.length,
-                            itemBuilder: (_, i) => _tile(context, ref, s, items[i]),
-                          ),
-              ),
-            ]),
+    return CallbackShortcuts(
+      bindings: keys(),
+      child: Focus(
+        autofocus: true,
+        child: DecoratedBox(
+          // cahaya halus dari warna logo di pojok kiri-atas (statis -> ringan)
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(-1.0, -1.25),
+              radius: 1.15,
+              colors: [Brand.blue.withValues(alpha: 0.10), Colors.transparent],
+            ),
           ),
+          child: Column(children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(8, 10, 16, 4),
+              child: _TopBar(),
+            ),
+            const _CommandBar(),
+            SizedBox(
+              height: 2,
+              child: s.loading ? const LinearProgressIndicator(minHeight: 2) : null,
+            ),
+            Expanded(
+              child: s.view == ViewMode.grid ? const TilesView() : const DetailsView(),
+            ),
+            _StatusBar(pal: pal),
+          ]),
         ),
       ),
     );
   }
+}
 
-  Widget _tile(BuildContext ctx, WidgetRef ref, FmState s, FileItem it, {bool grid = false}) {
+class _TopBar extends StatelessWidget {
+  const _TopBar();
+
+  @override
+  Widget build(BuildContext context) => const Row(children: [
+        NavButtons(),
+        Expanded(flex: 5, child: Breadcrumb()),
+        SizedBox(width: 12),
+        Expanded(flex: 3, child: SearchField()),
+        SizedBox(width: 12),
+        ViewToggle(),
+        SortMenu(),
+      ]);
+}
+
+class _CommandBar extends ConsumerWidget {
+  const _CommandBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(fmProvider);
     final c = ref.read(fmProvider.notifier);
-    final sel = s.selected.contains(it.path);
-    final cs = Theme.of(ctx).colorScheme;
-    final icon = Icon(iconFor(it.category), size: grid ? 36 : null, color: it.isDir ? cs.primary : cs.secondary);
+    final pal = Pal.of(context);
+    final sel = s.selecting;
+    final single = s.selected.length == 1;
 
-    void tap() => s.selecting ? c.toggleSelect(it.path) : _open(ctx, ref, it);
-
-    if (grid) {
-      return GestureDetector(
-        onTap: tap,
-        onLongPress: () => c.toggleSelect(it.path),
-        onSecondaryTap: () => c.toggleSelect(it.path),
-        child: Container(
-          decoration: BoxDecoration(
-            color: sel ? cs.primaryContainer : cs.surface,
-            borderRadius: BorderRadius.circular(12),
+    Widget cmd(IconData i, String label, VoidCallback? on) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: TextButton.icon(
+            onPressed: on,
+            icon: Icon(i, size: 18),
+            label: Text(label, style: const TextStyle(fontSize: 13)),
+            style: TextButton.styleFrom(
+              foregroundColor: pal.text,
+              disabledForegroundColor: pal.muted.withValues(alpha: 0.45),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
           ),
-          padding: const EdgeInsets.all(8),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            icon,
-            const SizedBox(height: 6),
-            Text(it.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12)),
-          ]),
-        ),
-      );
-    }
-    return GestureDetector(
-      onSecondaryTap: () => c.toggleSelect(it.path), // klik kanan (desktop)
-      child: ListTile(
-        selected: sel,
-        selectedTileColor: cs.primaryContainer,
-        leading: icon,
-        title: Text(it.name, overflow: TextOverflow.ellipsis),
-        subtitle: Text(it.isDir ? formatDate(it.modified) : '${formatBytes(it.size)} • ${formatDate(it.modified)}'),
-        trailing: s.selecting ? Checkbox(value: sel, onChanged: (_) => c.toggleSelect(it.path)) : null,
-        onTap: tap,
-        onLongPress: () => c.toggleSelect(it.path),
+        );
+
+    Widget sep() => Container(
+        width: 1, height: 20, margin: const EdgeInsets.symmetric(horizontal: 6), color: pal.border);
+
+    return SizedBox(
+      height: 44,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: Row(children: [
+          PopupMenuButton<bool>(
+            tooltip: 'Buat baru',
+            onSelected: (dir) => newItem(context, ref, dir: dir),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: true, child: Text('Folder baru')),
+              PopupMenuItem(value: false, child: Text('File baru')),
+            ],
+            child: Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                gradient: Brand.gradient,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Row(children: [
+                Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                SizedBox(width: 6),
+                Text('Baru',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+              ]),
+            ),
+          ),
+          sep(),
+          cmd(Icons.content_cut_rounded, 'Potong', sel ? c.cutSelected : null),
+          cmd(Icons.copy_rounded, 'Salin', sel ? c.copy : null),
+          cmd(Icons.paste_rounded, 'Tempel${s.clipboard.isEmpty ? '' : ' (${s.clipboard.length})'}',
+              s.clipboard.isEmpty ? null : c.paste),
+          cmd(Icons.drive_file_rename_outline_rounded, 'Ganti nama',
+              single ? () => renameSelected(context, ref) : null),
+          cmd(Icons.delete_outline_rounded, 'Hapus', sel ? () => deleteSelected(context, ref) : null),
+          sep(),
+          PopupMenuButton<ArchiveFormat>(
+            enabled: sel,
+            tooltip: 'Kompres',
+            onSelected: c.compress,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: ArchiveFormat.zip, child: Text('ZIP')),
+              PopupMenuItem(value: ArchiveFormat.tar, child: Text('TAR')),
+              PopupMenuItem(value: ArchiveFormat.tarGz, child: Text('TAR.GZ')),
+            ],
+            child: IgnorePointer(
+              child: cmd(Icons.folder_zip_outlined, 'Kompres', sel ? () {} : null),
+            ),
+          ),
+          cmd(Icons.lock_outline_rounded, 'Ke Vault', sel ? () => moveToVault(context, ref) : null),
+          if (s.filter != null) ...[
+            sep(),
+            cmd(Icons.filter_alt_off_rounded, 'Hapus filter', () => c.setFilter(s.filter)),
+          ],
+        ]),
       ),
+    );
+  }
+}
+
+class _StatusBar extends ConsumerWidget {
+  const _StatusBar({required this.pal});
+  final Pal pal;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(fmProvider);
+    final drives = ref.watch(drivesProvider).valueOrNull ?? const <DriveInfo>[];
+    final d = driveFor(drives, s.path);
+    final n = s.visible.length;
+    final selSize = s.selectedItems.fold<int>(0, (a, e) => a + (e.isDir ? 0 : e.size));
+    final style = TextStyle(color: pal.muted, fontSize: 12);
+
+    return Container(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: pal.side,
+        border: Border(top: BorderSide(color: pal.border)),
+      ),
+      child: Row(children: [
+        Text('$n item', style: style),
+        if (s.selecting) Text('  •  ${s.selected.length} dipilih • ${formatBytes(selSize)}', style: style),
+        if (s.results != null) Text('  •  hasil pencarian', style: style),
+        const Spacer(),
+        if (d != null) ...[
+          SizedBox(width: 90, child: UsageBar(d.frac, height: 4)),
+          const SizedBox(width: 10),
+          Text('${formatBytes(d.free)} kosong dari ${formatBytes(d.total)}', style: style),
+        ],
+      ]),
     );
   }
 }

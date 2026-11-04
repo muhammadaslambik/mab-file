@@ -1,55 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../storage/storage_analyzer.dart';
 import '../../vault/vault_page.dart';
+import '../application/nav_state.dart';
 import 'files_page.dart';
+import 'mobile_page.dart';
+import 'widgets/sidebar.dart';
 
-/// Adaptif: NavigationRail (desktop/tablet >= 800px) vs NavigationBar (HP).
-class HomeShell extends StatefulWidget {
+/// Adaptif: sidebar permanen (>= 900px) vs navigasi bawah (HP).
+class HomeShell extends ConsumerWidget {
   const HomeShell({super.key});
-  @override
-  State<HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<HomeShell> {
-  int _i = 0;
-  static const _pages = [FilesPage(), StorageAnalyzerPage(), VaultPage()];
-  static const _dest = [
-    (Icons.folder_outlined, Icons.folder, 'Files'),
-    (Icons.pie_chart_outline, Icons.pie_chart, 'Storage'),
-    (Icons.lock_outline, Icons.lock, 'Vault'),
-  ];
 
   @override
-  Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 800;
-    final body = IndexedStack(index: _i, children: _pages);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final idx = ref.watch(navIndexProvider);
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+
+    final pages = IndexedStack(index: idx, children: [
+      wide ? const DesktopFilesPage() : const MobileFilesPage(),
+      const StorageAnalyzerPage(),
+      const VaultPage(),
+    ]);
+
     if (wide) {
-      return Scaffold(
-        body: Row(children: [
-          NavigationRail(
-            selectedIndex: _i,
-            labelType: NavigationRailLabelType.all,
-            onDestinationSelected: (v) => setState(() => _i = v),
-            destinations: [
-              for (final d in _dest)
-                NavigationRailDestination(
-                    icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: Text(d.$3)),
-            ],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: body),
-        ]),
-      );
+      return Scaffold(body: Row(children: [const Sidebar(), Expanded(child: pages)]));
     }
     return Scaffold(
-      body: SafeArea(child: body),
+      body: SafeArea(bottom: false, child: pages),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _i,
-        onDestinationSelected: (v) => setState(() => _i = v),
-        destinations: [
-          for (final d in _dest)
-            NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: d.$3),
+        selectedIndex: idx,
+        onDestinationSelected: ref.read(navIndexProvider.notifier).set,
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.folder_outlined),
+              selectedIcon: Icon(Icons.folder_rounded),
+              label: 'File'),
+          NavigationDestination(
+              icon: Icon(Icons.pie_chart_outline_rounded),
+              selectedIcon: Icon(Icons.pie_chart_rounded),
+              label: 'Storage'),
+          NavigationDestination(
+              icon: Icon(Icons.lock_outline_rounded),
+              selectedIcon: Icon(Icons.lock_rounded),
+              label: 'Vault'),
         ],
       ),
     );
