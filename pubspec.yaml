@@ -1,0 +1,31 @@
+name: mab_file
+description: mab-file - File manager cross-platform (Windows, Android, iOS, macOS, Linux)
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.5.1
+  path: ^1.9.0
+  path_provider: ^2.1.3
+  permission_handler: ^11.3.1
+  archive: ^3.6.1
+  cryptography: ^2.7.0
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.2
+  fl_chart: ^0.68.0
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
