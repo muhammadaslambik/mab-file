@@ -50,7 +50,7 @@ class FolderGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShaderMask(
         blendMode: BlendMode.srcIn,
-        shaderCallback: (r) => Brand.gradient.createShader(r),
+        shaderCallback: (r) => Pal.of(context).gradient.createShader(r),
         child: Icon(Icons.folder_rounded, size: size, color: Colors.white),
       );
 }
@@ -131,7 +131,7 @@ class GradientText extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ShaderMask(
         blendMode: BlendMode.srcIn,
-        shaderCallback: (r) => Brand.gradient.createShader(r),
+        shaderCallback: (r) => Pal.of(context).gradient.createShader(r),
         child: Text(text, style: (style ?? const TextStyle()).copyWith(color: Colors.white)),
       );
 }

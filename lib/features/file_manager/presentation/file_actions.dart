@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../core/notify/notify.dart';
 import '../../archive/archive_service.dart';
+import '../../editor/code_editor_page.dart';
+import '../../editor/image_editor_page.dart';
+import '../../editor/media_studio_page.dart';
 import '../../vault/vault_page.dart';
+import '../../viewer/office_page.dart';
 import '../../viewer/viewers.dart';
 import '../application/file_manager_state.dart';
 import '../application/nav_state.dart';
@@ -33,35 +38,94 @@ Future<String?> askText(BuildContext c, String title, {String initial = ''}) {
   );
 }
 
+/// Mendeteksi file teks walau ekstensinya tidak dikenal (cek 4 KB pertama).
+Future<bool> looksLikeText(String path) async {
+  try {
+    final raf = await File(path).open();
+    final b = await raf.read(4096);
+    await raf.close();
+    if (b.isEmpty) return true;
+    if (b.contains(0)) return false;
+    var bad = 0;
+    for (final c in b) {
+      if (c < 9 || (c > 13 && c < 32)) bad++;
+    }
+    return bad / b.length < 0.05;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Router pembuka file: tiap jenis punya viewer bawaan; sisanya ke aplikasi default OS.
 void openItem(BuildContext ctx, WidgetRef ref, FileItem it) {
+  final c = ref.read(fmProvider.notifier);
   if (it.isDir) {
-    ref.read(fmProvider.notifier).open(it.path);
+    c.open(it.path);
     return;
   }
-  Widget? page;
+  final st = ref.read(fmProvider);
+  final ext = p.extension(it.path).toLowerCase().replaceFirst('.', '');
+  void push(Widget w) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => w));
+  List<String> sibs(FileCategory cat) =>
+      [for (final i in st.visible) if (!i.isDir && i.category == cat) i.path];
+
   switch (it.category) {
     case FileCategory.image:
-      page = ImageViewerPage(path: it.path);
-    case FileCategory.video || FileCategory.audio:
-      page = MediaPage(path: it.path);
+      push(ImageViewerPage(path: it.path, siblings: sibs(FileCategory.image)));
+    case FileCategory.video:
+      push(MediaPage(path: it.path, playlist: sibs(FileCategory.video)));
+    case FileCategory.audio:
+      push(MediaPage(path: it.path, playlist: sibs(FileCategory.audio), audio: true));
     case FileCategory.code:
-      page = TextEditorPage(path: it.path);
+      push(CodeEditorPage(path: it.path));
     case FileCategory.archive:
-      ref.read(fmProvider.notifier).extractHere(it.path);
-      return;
+      c.extractHere(it.path);
+    case FileCategory.document:
+      if (officeExts.contains(ext)) {
+        push(OfficePage(path: it.path));
+      } else {
+        openExternally(it.path);
+      }
     default:
-      ScaffoldMessenger.of(ctx).showSnackBar(
-          const SnackBar(content: Text('Belum ada viewer bawaan untuk tipe ini')));
-      return;
+      looksLikeText(it.path).then((isText) {
+        if (!ctx.mounted) return;
+        isText ? push(CodeEditorPage(path: it.path)) : openExternally(it.path);
+      });
   }
-  final target = page;
-  Navigator.push(ctx, MaterialPageRoute(builder: (_) => target));
 }
 
 void openSelected(BuildContext ctx, WidgetRef ref) {
   final s = ref.read(fmProvider);
   if (s.selected.length == 1 && s.selectedItems.isNotEmpty) {
     openItem(ctx, ref, s.selectedItems.first);
+  }
+}
+
+void openSelectedExternally(BuildContext ctx, WidgetRef ref) {
+  final s = ref.read(fmProvider);
+  if (s.selected.length == 1) openExternally(s.selected.first);
+}
+
+/// Edit sesuai jenis: gambar -> editor gambar, audio/video -> Studio Media, teks -> editor kode.
+void editItem(BuildContext ctx, WidgetRef ref, FileItem it) {
+  void push(Widget w) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => w));
+  switch (it.category) {
+    case FileCategory.image:
+      push(ImageEditorPage(path: it.path));
+    case FileCategory.video || FileCategory.audio:
+      push(MediaStudioPage(path: it.path));
+    case FileCategory.code:
+      push(CodeEditorPage(path: it.path));
+    default:
+      ref.read(notifsProvider.notifier).push('Belum ada editor bawaan',
+          body: 'Gunakan "Buka dengan aplikasi lain" untuk ${p.basename(it.path)}');
+  }
+}
+
+void editSelected(BuildContext ctx, WidgetRef ref) {
+  final s = ref.read(fmProvider);
+  if (s.selected.length == 1 && s.selectedItems.isNotEmpty) {
+    editItem(ctx, ref, s.selectedItems.first);
   }
 }
 
@@ -95,8 +159,7 @@ Future<void> deleteSelected(BuildContext ctx, WidgetRef ref) async {
 Future<void> moveToVault(BuildContext ctx, WidgetRef ref) async {
   final v = ref.read(vaultProvider);
   if (!v.unlocked) {
-    ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(content: Text('Buka Vault terlebih dulu (tab Vault)')));
+    ref.read(notifsProvider.notifier).push('Buka Vault terlebih dulu', body: 'Masuk ke tab Vault dan masukkan PIN');
     ref.read(navIndexProvider.notifier).set(2);
     return;
   }
@@ -105,6 +168,7 @@ Future<void> moveToVault(BuildContext ctx, WidgetRef ref) async {
     if (FileSystemEntity.typeSync(path) != FileSystemEntityType.file) continue;
     await v.addFile(path);
   }
+  ref.read(notifsProvider.notifier).push('Dipindahkan ke Vault', kind: NoteKind.success);
   await c.refresh();
 }
 
@@ -120,9 +184,14 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
   final s = ref.read(fmProvider);
   final c = ref.read(fmProvider.notifier);
   final single = s.selected.length == 1;
-  final isArchive = single &&
-      s.selectedItems.isNotEmpty &&
-      s.selectedItems.first.category == FileCategory.archive;
+  final first = single && s.selectedItems.isNotEmpty ? s.selectedItems.first : null;
+  final isArchive = first?.category == FileCategory.archive;
+  final editLabel = switch (first?.category) {
+    FileCategory.image => 'Edit gambar',
+    FileCategory.video || FileCategory.audio => 'Studio Media (konversi/potong)',
+    FileCategory.code => 'Edit teks / kode',
+    _ => null,
+  };
 
   PopupMenuItem<String> it(String v, IconData i, String t) => PopupMenuItem(
         value: v,
@@ -136,6 +205,9 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
     position: RelativeRect.fromRect(pos & const Size(1, 1), Offset.zero & overlay.size),
     items: [
       if (single) it('open', Icons.open_in_new_rounded, 'Buka'),
+      if (editLabel != null) it('edit', Icons.auto_fix_high_rounded, editLabel),
+      if (single && first != null && !first.isDir) it('ext', Icons.launch_rounded, 'Buka dengan aplikasi lain'),
+      const PopupMenuDivider(),
       it('copy', Icons.copy_rounded, 'Salin'),
       it('cut', Icons.content_cut_rounded, 'Potong'),
       if (s.clipboard.isNotEmpty) it('paste', Icons.paste_rounded, 'Tempel'),
@@ -152,6 +224,10 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
   switch (v) {
     case 'open':
       openSelected(ctx, ref);
+    case 'edit':
+      editSelected(ctx, ref);
+    case 'ext':
+      openSelectedExternally(ctx, ref);
     case 'copy':
       c.copy();
     case 'cut':

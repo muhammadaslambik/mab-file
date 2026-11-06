@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/notify/notify.dart';
+import '../../../../core/widgets/theme_picker.dart';
 import '../../../storage/storage_analyzer.dart';
 import '../../application/file_manager_state.dart';
 import '../../application/nav_state.dart';
@@ -22,7 +24,6 @@ class Sidebar extends ConsumerWidget {
     final nav = ref.watch(navIndexProvider);
     final places = ref.watch(placesProvider).valueOrNull ?? const <Place>[];
     final drives = ref.watch(drivesProvider).valueOrNull ?? const <DriveInfo>[];
-    final mode = ref.watch(themeModeProvider);
 
     void goFiles() => ref.read(navIndexProvider.notifier).set(0);
 
@@ -33,12 +34,12 @@ class Sidebar extends ConsumerWidget {
         border: Border(right: BorderSide(color: pal.border)),
       ),
       child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(18, 20, 18, 14),
           child: Row(children: [
-            const BrandLogo(size: 34),
-            const SizedBox(width: 10),
-            const GradientText('MAB-File',
+            BrandLogo(size: 34),
+            SizedBox(width: 10),
+            GradientText('MAB-File',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
           ]),
         ),
@@ -105,20 +106,13 @@ class Sidebar extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
           child: Row(children: [
-            Text('v0.1.0', style: TextStyle(color: pal.muted, fontSize: 12)),
+            Text('v0.2.0', style: TextStyle(color: pal.muted, fontSize: 12)),
             const Spacer(),
+            const NotifBell(),
             IconButton(
-              tooltip: switch (mode) {
-                ThemeMode.dark => 'Tema: Gelap',
-                ThemeMode.light => 'Tema: Terang',
-                ThemeMode.system => 'Tema: Ikuti sistem',
-              },
-              onPressed: ref.read(themeModeProvider.notifier).cycle,
-              icon: Icon(switch (mode) {
-                ThemeMode.dark => Icons.dark_mode_rounded,
-                ThemeMode.light => Icons.light_mode_rounded,
-                ThemeMode.system => Icons.brightness_auto_rounded,
-              }, size: 19),
+              tooltip: 'Tema',
+              onPressed: () => showThemePicker(context),
+              icon: const Icon(Icons.palette_outlined, size: 20),
             ),
           ]),
         ),
@@ -177,7 +171,7 @@ class _NavTile extends StatelessWidget {
                 height: 18,
                 margin: const EdgeInsets.only(left: 2, right: 9),
                 decoration: BoxDecoration(
-                  gradient: selected ? Brand.gradient : null,
+                  gradient: selected ? pal.gradient : null,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),

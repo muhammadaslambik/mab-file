@@ -204,7 +204,6 @@ class ViewToggle extends ConsumerWidget {
     final v = ref.watch(fmProvider.select((s) => s.view));
     final c = ref.read(fmProvider.notifier);
     final pal = Pal.of(context);
-    final cs = Theme.of(context).colorScheme;
 
     Widget seg(ViewMode m, IconData i, String tip) => Tooltip(
           message: tip,
@@ -216,7 +215,7 @@ class ViewToggle extends ConsumerWidget {
               height: 32,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(9),
-                gradient: v == m ? Brand.gradient : null,
+                gradient: v == m ? pal.gradient : null,
               ),
               child: Icon(i, size: 18, color: v == m ? Colors.white : pal.muted),
             ),

@@ -57,7 +57,7 @@ class DesktopFilesPage extends ConsumerWidget {
             gradient: RadialGradient(
               center: const Alignment(-1.0, -1.25),
               radius: 1.15,
-              colors: [Brand.blue.withValues(alpha: 0.10), Colors.transparent],
+              colors: [pal.accentA.withValues(alpha: 0.10), Colors.transparent],
             ),
           ),
           child: Column(children: [
@@ -142,7 +142,7 @@ class _CommandBar extends ConsumerWidget {
               height: 32,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                gradient: Brand.gradient,
+                gradient: pal.gradient,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Row(children: [
@@ -176,6 +176,9 @@ class _CommandBar extends ConsumerWidget {
             ),
           ),
           cmd(Icons.lock_outline_rounded, 'Ke Vault', sel ? () => moveToVault(context, ref) : null),
+          sep(),
+          cmd(Icons.auto_fix_high_rounded, 'Edit', single ? () => editSelected(context, ref) : null),
+          cmd(Icons.launch_rounded, 'Buka dengan…', single ? () => openSelectedExternally(context, ref) : null),
           if (s.filter != null) ...[
             sep(),
             cmd(Icons.filter_alt_off_rounded, 'Hapus filter', () => c.setFilter(s.filter)),

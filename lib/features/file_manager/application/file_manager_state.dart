@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../core/notify/notify.dart';
 import '../../../core/utils/paths.dart';
 import '../../archive/archive_service.dart';
 import '../data/file_service.dart';
@@ -232,7 +233,10 @@ class FmController extends Notifier<FmState> {
         for (final s in state.clipboard) {
           state.cut ? await _fs.move(s, state.path) : await _fs.copy(s, state.path);
         }
+        final n = state.clipboard.length;
         if (state.cut) state = state.copyWith(clipboard: []);
+        ref.read(notifsProvider.notifier).push(state.cut ? 'Dipindahkan' : 'Disalin',
+            body: '$n item', kind: NoteKind.success, toast: false);
       });
 
   // ---- operasi dasar ----
@@ -271,13 +275,17 @@ class FmController extends Notifier<FmState> {
   }
 
   // ---- arsip ----
-  Future<void> compress(ArchiveFormat f) => _guard(() => ref
-      .read(archiveServiceProvider)
-      .compress(state.selected.toList(), state.path, f));
+  Future<void> compress(ArchiveFormat f) => _guard(() async {
+        final out = await ref
+            .read(archiveServiceProvider)
+            .compress(state.selected.toList(), state.path, f);
+        ref.read(notifsProvider.notifier).push('Arsip dibuat', body: p.basename(out), kind: NoteKind.success);
+      });
 
-  Future<void> extractHere(String archivePath) => _guard(() => ref
-      .read(archiveServiceProvider)
-      .extract(archivePath, state.path));
+  Future<void> extractHere(String archivePath) => _guard(() async {
+        final out = await ref.read(archiveServiceProvider).extract(archivePath, state.path);
+        ref.read(notifsProvider.notifier).push('Ekstrak selesai', body: p.basename(out), kind: NoteKind.success);
+      });
 
   Future<void> _guard(Future<void> Function() job) async {
     try {

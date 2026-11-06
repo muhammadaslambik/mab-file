@@ -92,7 +92,7 @@ class UsageBar extends StatelessWidget {
               gradient: hot
                   ? const LinearGradient(
                       colors: [Color(0xFFFF8A5B), Color(0xFFFF3B5C)])
-                  : Brand.gradient,
+                  : pal.gradient,
             ),
           ),
         ),

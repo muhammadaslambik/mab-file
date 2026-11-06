@@ -7,6 +7,8 @@ import '../../../core/utils/formatters.dart';
 import '../../archive/archive_service.dart';
 import '../../storage/storage_analyzer.dart';
 import '../application/file_manager_state.dart';
+import '../../../core/notify/notify.dart';
+import '../../../core/widgets/theme_picker.dart';
 import '../application/nav_state.dart';
 import '../domain/file_item.dart';
 import 'file_actions.dart';
@@ -41,6 +43,7 @@ class MobileFilesPage extends ConsumerWidget {
         }
       },
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         floatingActionButton: _Fab(),
         body: SafeArea(
           bottom: false,
@@ -95,10 +98,11 @@ class _Header extends ConsumerWidget {
         const GradientText('MAB-File',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.4)),
         const Spacer(),
+        const NotifBell(),
         IconButton(
           tooltip: 'Tema',
-          onPressed: ref.read(themeModeProvider.notifier).cycle,
-          icon: const Icon(Icons.brightness_6_rounded),
+          onPressed: () => showThemePicker(context),
+          icon: const Icon(Icons.palette_outlined),
         ),
         IconButton(
           tooltip: 'Tampilan',
@@ -147,6 +151,10 @@ class _SelectionBar extends ConsumerWidget {
                 c.compress(ArchiveFormat.tarGz);
               case 'vault':
                 moveToVault(context, ref);
+              case 'edit':
+                editSelected(context, ref);
+              case 'ext':
+                openSelectedExternally(context, ref);
             }
           },
           itemBuilder: (_) => const [
@@ -155,6 +163,8 @@ class _SelectionBar extends ConsumerWidget {
             PopupMenuItem(value: 'tar', child: Text('Kompres TAR')),
             PopupMenuItem(value: 'tgz', child: Text('Kompres TAR.GZ')),
             PopupMenuItem(value: 'vault', child: Text('Pindah ke Vault')),
+            PopupMenuItem(value: 'edit', child: Text('Edit / Studio')),
+            PopupMenuItem(value: 'ext', child: Text('Buka dengan aplikasi lain')),
           ],
         ),
       ]),
@@ -182,8 +192,8 @@ class _StorageCard extends ConsumerWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: pal.border),
             gradient: LinearGradient(colors: [
-              Brand.blue.withValues(alpha: 0.16),
-              Brand.violet.withValues(alpha: 0.16),
+              pal.accentA.withValues(alpha: 0.16),
+              pal.accentB.withValues(alpha: 0.16),
             ]),
           ),
           child: Column(children: [
@@ -247,6 +257,7 @@ class _Fab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(fmProvider);
+    final pal = Pal.of(context);
     return Column(mainAxisSize: MainAxisSize.min, children: [
       if (s.clipboard.isNotEmpty)
         Padding(
@@ -268,13 +279,13 @@ class _Fab extends ConsumerWidget {
           height: 58,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: const LinearGradient(
-                colors: [Brand.blue, Brand.violet],
+            gradient: LinearGradient(
+                colors: [pal.accentA, pal.accentB],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight),
             boxShadow: [
               BoxShadow(
-                  color: Brand.violet.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5)),
+                  color: pal.accentB.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5)),
             ],
           ),
           child: const Icon(Icons.add_rounded, color: Colors.white, size: 30),

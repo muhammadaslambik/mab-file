@@ -18,6 +18,10 @@ dependencies:
   local_auth: ^2.3.0
   flutter_secure_storage: ^9.2.2
   fl_chart: ^0.68.0
+  flutter_svg: ^2.0.10
+  open_filex: ^4.5.0
+  xml: ^6.5.0
+  image: ^4.1.7
   media_kit: ^1.1.11
   media_kit_video: ^1.2.5
   media_kit_libs_video: ^1.0.5
