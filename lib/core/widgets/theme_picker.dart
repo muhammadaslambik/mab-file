@@ -43,14 +43,16 @@ class _PickerBody extends ConsumerWidget {
 
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 640, maxHeight: 640),
-      child: Container(
-        decoration: BoxDecoration(
-          color: pal.card,
+      child: Material(
+        color: pal.card,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: pal.border),
+          side: BorderSide(color: pal.border),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
             const Text('Tema', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
             const Spacer(),
@@ -97,6 +99,7 @@ class _PickerBody extends ConsumerWidget {
             onChanged: (v) => ctl.update(s.copyWith(animated: v)),
           ),
         ]),
+        ),
       ),
     );
   }

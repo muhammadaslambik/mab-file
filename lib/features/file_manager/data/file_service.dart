@@ -7,22 +7,9 @@ import '../../../core/utils/paths.dart';
 import '../domain/file_item.dart';
 
 class FileService {
-  Future<List<FileItem>> list(String dir, {bool showHidden = false}) async {
-    final out = <FileItem>[];
-    await for (final e in Directory(dir).list(followLinks: false)) {
-      if (!showHidden && p.basename(e.path).startsWith('.')) continue;
-      try {
-        final st = await e.stat();
-        out.add(FileItem(
-          path: e.path,
-          isDir: st.type == FileSystemEntityType.directory,
-          size: st.size,
-          modified: st.modified,
-        ));
-      } catch (_) {/* abaikan entri yang tak bisa dibaca */}
-    }
-    return out;
-  }
+  /// Listing di Isolate dengan statSync: jauh lebih cepat & UI tidak tersendat untuk folder besar.
+  Future<List<FileItem>> list(String dir, {bool showHidden = false}) =>
+      Isolate.run(() => _listSync(dir, showHidden));
 
   Future<void> copy(String src, String destDir) async {
     if (p.equals(src, destDir) || p.isWithin(src, destDir)) {
@@ -90,10 +77,12 @@ class FileService {
       Isolate.run(() => _search(root, query.toLowerCase(), category, limit));
 
   /// N file terbesar di bawah [root].
-  Future<List<FileItem>> largest(String root, {int top = 50}) =>
+  Future<List<FileItem>> largest(String root, {int top = 50, int maxEntities = 120000}) =>
       Isolate.run(() {
         final all = <FileItem>[];
+        var seen = 0;
         for (final e in _walk(root)) {
+          if (++seen > maxEntities) break; // batas agar tetap ringan
           if (e is File) {
             try {
               final st = e.statSync();
@@ -104,6 +93,23 @@ class FileService {
         all.sort((a, b) => b.size.compareTo(a.size));
         return all.take(top).toList();
       });
+}
+
+List<FileItem> _listSync(String dir, bool showHidden) {
+  final out = <FileItem>[];
+  for (final e in Directory(dir).listSync(followLinks: false)) {
+    if (!showHidden && p.basename(e.path).startsWith('.')) continue;
+    try {
+      final st = e.statSync();
+      out.add(FileItem(
+        path: e.path,
+        isDir: st.type == FileSystemEntityType.directory,
+        size: st.size,
+        modified: st.modified,
+      ));
+    } catch (_) {/* abaikan entri yang tak bisa dibaca */}
+  }
+  return out;
 }
 
 List<FileItem> _search(String root, String q, FileCategory? cat, int limit) {

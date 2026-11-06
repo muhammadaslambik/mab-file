@@ -19,7 +19,8 @@ class Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pal = Pal.of(context);
-    final s = ref.watch(fmProvider);
+    final (path: curPath, filter: curFilter) =
+        ref.watch(fmProvider.select((v) => (path: v.path, filter: v.filter)));
     final c = ref.read(fmProvider.notifier);
     final nav = ref.watch(navIndexProvider);
     final places = ref.watch(placesProvider).valueOrNull ?? const <Place>[];
@@ -50,7 +51,7 @@ class Sidebar extends ConsumerWidget {
               _NavTile(
                 icon: pl.icon,
                 label: pl.label,
-                selected: nav == 0 && s.path == pl.path && s.filter == null,
+                selected: nav == 0 && curPath == pl.path && curFilter == null,
                 onTap: () {
                   goFiles();
                   c.open(pl.path);
@@ -61,7 +62,7 @@ class Sidebar extends ConsumerWidget {
               for (final d in drives)
                 _DriveTile(
                   d,
-                  selected: nav == 0 && s.path.toLowerCase().startsWith(d.path.toLowerCase()) && d.path != '/',
+                  selected: nav == 0 && curPath.toLowerCase().startsWith(d.path.toLowerCase()) && d.path != '/',
                   onTap: () {
                     goFiles();
                     c.open(d.path);
@@ -81,7 +82,7 @@ class Sidebar extends ConsumerWidget {
                 icon: k.$2,
                 label: k.$3,
                 dot: catColor(k.$1),
-                selected: nav == 0 && s.filter == k.$1,
+                selected: nav == 0 && curFilter == k.$1,
                 onTap: () {
                   goFiles();
                   c.setFilter(k.$1);
@@ -95,6 +96,12 @@ class Sidebar extends ConsumerWidget {
               onTap: () => ref.read(navIndexProvider.notifier).set(1),
             ),
             _NavTile(
+              icon: Icons.queue_music_rounded,
+              label: 'Playlist',
+              selected: nav == 3,
+              onTap: () => ref.read(navIndexProvider.notifier).set(3),
+            ),
+            _NavTile(
               icon: Icons.lock_rounded,
               label: 'Secure Vault',
               selected: nav == 2,
@@ -106,7 +113,7 @@ class Sidebar extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
           child: Row(children: [
-            Text('v0.2.0', style: TextStyle(color: pal.muted, fontSize: 12)),
+            Text('v0.3.2', style: TextStyle(color: pal.muted, fontSize: 12)),
             const Spacer(),
             const NotifBell(),
             IconButton(

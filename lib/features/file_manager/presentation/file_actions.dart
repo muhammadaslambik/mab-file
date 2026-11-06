@@ -9,6 +9,8 @@ import '../../archive/archive_service.dart';
 import '../../editor/code_editor_page.dart';
 import '../../editor/image_editor_page.dart';
 import '../../editor/media_studio_page.dart';
+import '../../player/media_page.dart';
+import '../../player/player_hub.dart';
 import '../../vault/vault_page.dart';
 import '../../viewer/office_page.dart';
 import '../../viewer/viewers.dart';
@@ -106,6 +108,60 @@ void openSelectedExternally(BuildContext ctx, WidgetRef ref) {
   if (s.selected.length == 1) openExternally(s.selected.first);
 }
 
+bool isMediaItem(FileItem i) =>
+    !i.isDir && (i.category == FileCategory.audio || i.category == FileCategory.video);
+
+/// Path audio/video dari item terpilih (urut sesuai daftar). Folder terpilih = isi medianya.
+List<String> selectedMediaPaths(WidgetRef ref) {
+  final s = ref.read(fmProvider);
+  final out = <String>[];
+  for (final it in s.visible) {
+    if (!s.selected.contains(it.path)) continue;
+    if (isMediaItem(it)) {
+      out.add(it.path);
+    } else if (it.isDir) {
+      try {
+        final files = Directory(it.path)
+            .listSync(followLinks: false)
+            .whereType<File>()
+            .map((f) => f.path)
+            .where((f) {
+              final c = categoryOf(f);
+              return c == FileCategory.audio || c == FileCategory.video;
+            })
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        out.addAll(files);
+      } catch (_) {}
+    }
+  }
+  return out;
+}
+
+/// Putar item terpilih sebagai playlist (berurutan). Audio berjalan di latar (MiniPlayer).
+Future<void> playSelection(BuildContext ctx, WidgetRef ref) async {
+  final list = selectedMediaPaths(ref);
+  if (list.isEmpty) {
+    ref.read(notifsProvider.notifier).push('Pilih file audio/video dulu');
+    return;
+  }
+  await ref.read(playerHubProvider).playAll(list);
+  ref.read(notifsProvider.notifier).push('Memutar ${list.length} item', body: 'Kontrol ada di pemutar mini di bawah');
+  if (ctx.mounted && categoryOf(list.first) == FileCategory.video) {
+    Navigator.push(ctx, MaterialPageRoute(builder: (_) => const MediaPage()));
+  }
+}
+
+Future<void> enqueueSelection(BuildContext ctx, WidgetRef ref) async {
+  final list = selectedMediaPaths(ref);
+  if (list.isEmpty) {
+    ref.read(notifsProvider.notifier).push('Pilih file audio/video dulu');
+    return;
+  }
+  await ref.read(playerHubProvider).enqueue(list);
+  ref.read(notifsProvider.notifier).push('Ditambahkan ke antrean', body: '${list.length} item', kind: NoteKind.success);
+}
+
 /// Edit sesuai jenis: gambar -> editor gambar, audio/video -> Studio Media, teks -> editor kode.
 void editItem(BuildContext ctx, WidgetRef ref, FileItem it) {
   void push(Widget w) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => w));
@@ -193,6 +249,8 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
     _ => null,
   };
 
+  final hasMedia = s.selectedItems.any((i) => isMediaItem(i) || i.isDir);
+
   PopupMenuItem<String> it(String v, IconData i, String t) => PopupMenuItem(
         value: v,
         height: 40,
@@ -205,6 +263,8 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
     position: RelativeRect.fromRect(pos & const Size(1, 1), Offset.zero & overlay.size),
     items: [
       if (single) it('open', Icons.open_in_new_rounded, 'Buka'),
+      if (hasMedia) it('play', Icons.play_circle_outline_rounded, 'Putar sebagai playlist'),
+      if (hasMedia) it('enqueue', Icons.queue_music_rounded, 'Tambah ke antrean'),
       if (editLabel != null) it('edit', Icons.auto_fix_high_rounded, editLabel),
       if (single && first != null && !first.isDir) it('ext', Icons.launch_rounded, 'Buka dengan aplikasi lain'),
       const PopupMenuDivider(),
@@ -224,6 +284,10 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
   switch (v) {
     case 'open':
       openSelected(ctx, ref);
+    case 'play':
+      playSelection(ctx, ref);
+    case 'enqueue':
+      enqueueSelection(ctx, ref);
     case 'edit':
       editSelected(ctx, ref);
     case 'ext':

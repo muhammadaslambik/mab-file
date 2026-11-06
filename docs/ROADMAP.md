@@ -5,6 +5,11 @@ Logo baru (M terlihat), 12 tema + latar animasi, notifikasi in-app, viewer unive
 (gambar/SVG/TIFF/ICO, audio/video semua format via libmpv, Markdown, HTML, kode, Word/Excel/PowerPoint/ODF),
 editor kode (highlight, nomor baris, Run), editor gambar, Studio Media (FFmpeg).
 
+## v0.3.0
+Optimasi kinerja (tab dimuat malas, listing di Isolate, baris daftar tanpa InkWell, folder tanpa ShaderMask,
+latar animasi murah, libmpv dimuat saat dipakai), playlist audio/video, pemutar mini latar belakang,
+playlist tersimpan.
+
 ## Tahap 2 — Cloud
 Google Drive & Workspace (OAuth desktop loopback; unduh/unggah; ekspor Docs/Sheets/Slides ke docx/xlsx/pptx/pdf).
 Butuh Client ID dari Google Cloud Console (gratis, tanpa kartu kredit).

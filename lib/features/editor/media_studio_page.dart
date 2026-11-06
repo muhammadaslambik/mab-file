@@ -9,7 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/paths.dart';
 import '../file_manager/application/file_manager_state.dart';
 import '../file_manager/domain/file_item.dart';
-import '../viewer/viewers.dart';
+import '../player/media_page.dart';
 import 'ffmpeg_service.dart';
 
 enum StudioOp { convert, extractAudio, trim, compress, mute, volume }

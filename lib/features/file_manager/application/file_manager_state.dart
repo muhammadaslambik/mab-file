@@ -14,7 +14,7 @@ enum SortMode { name, size, date }
 enum ViewMode { details, grid }
 
 class FmState {
-  const FmState({
+  FmState({
     this.path = '',
     this.items = const [],
     this.results,
@@ -48,10 +48,14 @@ class FmState {
 
   bool get selecting => selected.isNotEmpty;
 
-  List<FileItem> get selectedItems =>
-      visible.where((i) => selected.contains(i.path)).toList();
+  /// Dihitung sekali per instance state (bukan tiap build) -> scroll & rebuild lebih ringan.
+  late final List<FileItem> selectedItems = selected.isEmpty
+      ? const []
+      : visible.where((i) => selected.contains(i.path)).toList();
 
-  List<FileItem> get visible {
+  late final List<FileItem> visible = _computeVisible();
+
+  List<FileItem> _computeVisible() {
     final base = results ?? items;
     if (filter == null) return base;
     return base
@@ -113,7 +117,7 @@ class FmController extends Notifier<FmState> {
   @override
   FmState build() {
     Future.microtask(() async => open(await defaultRoot(), push: false));
-    return const FmState(loading: true);
+    return FmState(loading: true);
   }
 
   // ---- navigasi ----

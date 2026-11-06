@@ -13,7 +13,10 @@ import 'glyph.dart';
 /// Perilaku seleksi per platform:
 /// - Desktop: klik = pilih, Ctrl/Cmd+klik = tambah, klik 2x = buka, klik kanan = menu.
 /// - Mobile: ketuk = buka (atau pilih saat mode seleksi), tekan lama = pilih.
-class ItemInteraction extends ConsumerWidget {
+///
+/// Sengaja TANPA Material/InkWell: InkWell membuat banyak objek (Focus, Actions, Ink)
+/// per baris. Di sini cukup MouseRegion + GestureDetector + satu DecoratedBox.
+class ItemInteraction extends ConsumerStatefulWidget {
   const ItemInteraction({
     super.key,
     required this.item,
@@ -28,43 +31,60 @@ class ItemInteraction extends ConsumerWidget {
   final double radius;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ItemInteraction> createState() => _ItemInteractionState();
+}
+
+class _ItemInteractionState extends ConsumerState<ItemInteraction> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
     final pal = Pal.of(context);
     final c = ref.read(fmProvider.notifier);
+    final it = widget.item;
     final desktop = isDesktopPlatform;
 
     void onDown(PointerDownEvent e) {
       if (!desktop) return;
       if (e.kind == PointerDeviceKind.mouse && e.buttons == kSecondaryMouseButton) {
-        if (!selected) c.selectOnly(item.path);
+        if (!widget.selected) c.selectOnly(it.path);
         showItemMenu(context, ref, e.position);
         return;
       }
       final multi = HardwareKeyboard.instance.isControlPressed ||
           HardwareKeyboard.instance.isMetaPressed;
-      multi ? c.toggleSelect(item.path) : c.selectOnly(item.path);
+      multi ? c.toggleSelect(it.path) : c.selectOnly(it.path);
     }
 
-    return Listener(
-      onPointerDown: onDown,
-      child: Material(
-        color: selected ? pal.select : Colors.transparent,
-        borderRadius: BorderRadius.circular(radius),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(radius),
-          hoverColor: pal.hover,
-          // Desktop: onTap kosong supaya menang atas klik "area kosong" di belakang.
-          onTap: desktop
-              ? () {}
-              : () => ref.read(fmProvider).selecting
-                  ? c.toggleSelect(item.path)
-                  : openItem(context, ref, item),
-          onLongPress: desktop ? null : () => c.toggleSelect(item.path),
-          onDoubleTap: desktop ? () => openItem(context, ref, item) : null,
-          child: child,
-        ),
+    Widget body = DecoratedBox(
+      decoration: BoxDecoration(
+        color: widget.selected ? pal.select : (_hover ? pal.hover : null),
+        borderRadius: BorderRadius.circular(widget.radius),
       ),
+      child: widget.child,
     );
+
+    body = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // Desktop: onTap kosong supaya menang atas klik "area kosong" di belakang.
+      onTap: desktop
+          ? () {}
+          : () => ref.read(fmProvider).selecting
+              ? c.toggleSelect(it.path)
+              : openItem(context, ref, it),
+      onLongPress: desktop ? null : () => c.toggleSelect(it.path),
+      onDoubleTap: desktop ? () => openItem(context, ref, it) : null,
+      child: body,
+    );
+
+    if (desktop) {
+      body = MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: Listener(onPointerDown: onDown, child: body),
+      );
+    }
+    return body;
   }
 }
 
@@ -117,11 +137,19 @@ class DetailsView extends ConsumerWidget {
                 size: 16, color: Theme.of(context).colorScheme.primary),
         ],
       );
-      final box = SizedBox(width: w, height: 34, child: Align(alignment: Alignment.centerLeft, child: label));
+      // Padding di DALAM lebar tetap -> kolom judul persis sejajar dengan kolom di baris.
+      final box = SizedBox(
+        width: w,
+        height: 34,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Align(alignment: Alignment.centerLeft, child: label),
+        ),
+      );
       final tap = InkWell(
         onTap: m == null ? null : () => c.setSort(m),
         hoverColor: pal.hover,
-        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: box),
+        child: box,
       );
       return w == null ? Expanded(child: tap) : tap;
     }
@@ -133,7 +161,7 @@ class DetailsView extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Row(children: [
-            const SizedBox(width: 40),
+            const SizedBox(width: 44),
             head('Nama', SortMode.name, null),
             if (showDate) head('Tanggal diubah', SortMode.date, _wDate),
             if (showType) head('Jenis', null, _wType),

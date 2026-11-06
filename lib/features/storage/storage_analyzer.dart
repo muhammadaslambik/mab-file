@@ -213,12 +213,25 @@ class StorageAnalyzerPage extends ConsumerWidget {
         },
       ),
       const SizedBox(height: 28),
-      Text('File terbesar di folder aktif',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700)),
-      Text(cur, style: TextStyle(color: pal.muted, fontSize: 12)),
+      Row(children: [
+        Expanded(
+          child: Text('File terbesar di folder aktif',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+        ),
+        IconButton(
+          tooltip: 'Pindai ulang',
+          icon: const Icon(Icons.refresh_rounded),
+          onPressed: () {
+            ref.invalidate(largestProvider);
+            ref.invalidate(drivesProvider);
+          },
+        ),
+      ]),
+      Text('$cur  •  pemindaian dibatasi 120 ribu item agar tetap ringan',
+          style: TextStyle(color: pal.muted, fontSize: 12)),
       const SizedBox(height: 8),
       big.when(
         loading: () => const Padding(

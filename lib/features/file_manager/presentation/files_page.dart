@@ -107,20 +107,33 @@ class _CommandBar extends ConsumerWidget {
     final sel = s.selecting;
     final single = s.selected.length == 1;
 
-    Widget cmd(IconData i, String label, VoidCallback? on) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: TextButton.icon(
-            onPressed: on,
-            icon: Icon(i, size: 18),
-            label: Text(label, style: const TextStyle(fontSize: 13)),
-            style: TextButton.styleFrom(
-              foregroundColor: pal.text,
-              disabledForegroundColor: pal.muted.withValues(alpha: 0.45),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    // Layar sempit (<1480px, termasuk sidebar): tombol hanya ikon + tooltip agar muat semua.
+    final compact = MediaQuery.sizeOf(context).width < 1480;
+
+    Widget cmd(IconData i, String label, VoidCallback? on) => compact
+        ? Tooltip(
+            message: label,
+            child: IconButton(
+              onPressed: on,
+              icon: Icon(i, size: 19),
+              color: pal.text,
+              disabledColor: pal.muted.withValues(alpha: 0.45),
             ),
-          ),
-        );
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: TextButton.icon(
+              onPressed: on,
+              icon: Icon(i, size: 18),
+              label: Text(label, style: const TextStyle(fontSize: 13)),
+              style: TextButton.styleFrom(
+                foregroundColor: pal.text,
+                disabledForegroundColor: pal.muted.withValues(alpha: 0.45),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          );
 
     Widget sep() => Container(
         width: 1, height: 20, margin: const EdgeInsets.symmetric(horizontal: 6), color: pal.border);
@@ -176,6 +189,11 @@ class _CommandBar extends ConsumerWidget {
             ),
           ),
           cmd(Icons.lock_outline_rounded, 'Ke Vault', sel ? () => moveToVault(context, ref) : null),
+          sep(),
+          cmd(Icons.play_circle_outline_rounded, 'Putar',
+              s.selectedItems.any((i) => isMediaItem(i) || i.isDir) ? () => playSelection(context, ref) : null),
+          cmd(Icons.queue_music_rounded, 'Antrean',
+              s.selectedItems.any((i) => isMediaItem(i) || i.isDir) ? () => enqueueSelection(context, ref) : null),
           sep(),
           cmd(Icons.auto_fix_high_rounded, 'Edit', single ? () => editSelected(context, ref) : null),
           cmd(Icons.launch_rounded, 'Buka dengan…', single ? () => openSelectedExternally(context, ref) : null),

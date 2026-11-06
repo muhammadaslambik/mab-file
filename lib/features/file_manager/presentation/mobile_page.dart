@@ -151,6 +151,10 @@ class _SelectionBar extends ConsumerWidget {
                 c.compress(ArchiveFormat.tarGz);
               case 'vault':
                 moveToVault(context, ref);
+              case 'play':
+                playSelection(context, ref);
+              case 'enqueue':
+                enqueueSelection(context, ref);
               case 'edit':
                 editSelected(context, ref);
               case 'ext':
@@ -163,6 +167,8 @@ class _SelectionBar extends ConsumerWidget {
             PopupMenuItem(value: 'tar', child: Text('Kompres TAR')),
             PopupMenuItem(value: 'tgz', child: Text('Kompres TAR.GZ')),
             PopupMenuItem(value: 'vault', child: Text('Pindah ke Vault')),
+            PopupMenuItem(value: 'play', child: Text('Putar sebagai playlist')),
+            PopupMenuItem(value: 'enqueue', child: Text('Tambah ke antrean')),
             PopupMenuItem(value: 'edit', child: Text('Edit / Studio')),
             PopupMenuItem(value: 'ext', child: Text('Buka dengan aplikasi lain')),
           ],

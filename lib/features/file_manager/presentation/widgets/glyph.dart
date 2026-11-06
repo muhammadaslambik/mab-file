@@ -42,17 +42,15 @@ IconData catIcon(FileCategory c) => switch (c) {
       FileCategory.other => Icons.insert_drive_file_rounded,
     };
 
-/// Folder dengan gradien identitas MAB (biru -> ungu).
+/// Folder berwarna aksen tema. Sengaja memakai Icon biasa (bukan ShaderMask/gradien)
+/// karena ShaderMask memaksa saveLayer di setiap baris dan membuat scroll berat.
 class FolderGlyph extends StatelessWidget {
   const FolderGlyph({super.key, this.size = 36});
   final double size;
 
   @override
-  Widget build(BuildContext context) => ShaderMask(
-        blendMode: BlendMode.srcIn,
-        shaderCallback: (r) => Pal.of(context).gradient.createShader(r),
-        child: Icon(Icons.folder_rounded, size: size, color: Colors.white),
-      );
+  Widget build(BuildContext context) =>
+      Icon(Icons.folder_rounded, size: size, color: Pal.of(context).accentA);
 }
 
 /// Ikon file berwarna per jenis; gambar bisa menampilkan thumbnail ringan.
