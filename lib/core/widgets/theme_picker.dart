@@ -98,6 +98,27 @@ class _PickerBody extends ConsumerWidget {
             value: s.animated,
             onChanged: (v) => ctl.update(s.copyWith(animated: v)),
           ),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Putar video dengan pemutar sistem'),
+            subtitle: Text('Paling hemat CPU/GPU & baterai. Musik tetap diputar di MAB-File',
+                style: TextStyle(color: pal.muted, fontSize: 12)),
+            value: s.videoUsesSystemPlayer,
+            onChanged: (v) => ctl.update(s.copyWith(videoMode: v ? 'system' : 'builtin')),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => showLicensePage(
+                context: context,
+                applicationName: 'MAB-File',
+                applicationVersion: '0.3.8',
+              ),
+              icon: const Icon(Icons.description_outlined, size: 18),
+              label: const Text('Lisensi pihak ketiga'),
+            ),
+          ),
         ]),
         ),
       ),

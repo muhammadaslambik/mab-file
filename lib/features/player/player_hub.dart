@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -15,17 +17,41 @@ class PlayerHub extends ChangeNotifier {
   bool _disposed = false;
 
   bool shuffle = false;
+  bool _videoVisible = false;
+
+  /// Posisi putar yang DIBATASI (maks ~2,5 kali/detik). Event posisi mpv jauh lebih sering;
+  /// tiap event yang membangun ulang widget = satu frame penuh jendela Flutter di GPU.
+  final ValueNotifier<Duration> position = ValueNotifier(Duration.zero);
+  final List<StreamSubscription<dynamic>> _subs = [];
+
+  /// Matikan dekode video saat halaman pemutar ditutup (hemat CPU/GPU). DIMATIKAN secara
+  /// default karena menyalakan trek video lagi bisa membuat gambar hitam/pecah di Windows.
+  static const bool _pauseVideoWhenHidden = false;
   PlaylistMode mode = PlaylistMode.none;
 
   Player get player => _player ??= _create();
   VideoController get video => _video ??= VideoController(player);
 
   Player _create() {
-    MediaKit.ensureInitialized();
     final pl = Player();
-    pl.stream.playlist.listen((_) {
+    // Profil mpv 'fast': penskalaan bilinear, tanpa dither/deband -> beban render (3D engine)
+    // lebih ringan. Dibungkus try/catch: kalau gagal, pemutaran tetap jalan seperti biasa.
+    () async {
+      try {
+        await (pl.platform as dynamic).setProperty('profile', 'fast');
+      } catch (_) {}
+    }();
+    _subs.add(pl.stream.playlist.listen((_) {
       if (!_disposed) notifyListeners();
-    });
+    }));
+    var lastMs = -1000000;
+    _subs.add(pl.stream.position.listen((pos) {
+      if (_disposed) return;
+      final ms = pos.inMilliseconds;
+      if ((ms - lastMs).abs() < 400) return;
+      lastMs = ms;
+      position.value = pos;
+    }));
     return pl;
   }
 
@@ -52,7 +78,42 @@ class PlayerHub extends ChangeNotifier {
     if (paths.isEmpty) return;
     final i = start.clamp(0, paths.length - 1).toInt();
     await player.open(Playlist([for (final f in paths) Media(f)], index: i));
+    _applyVideoTrack();
     notifyListeners();
+  }
+
+  /// Apakah [path] sedang jadi item aktif dan antrean sama dengan [list]?
+  /// Dibandingkan lewat `Media(x).uri` agar format path Windows (backslash) tidak membuat
+  /// perbandingan salah.
+  bool isSame(String path, List<String> list) {
+    if (!hasQueue) return false;
+    final want = [for (final f in list) Media(f).uri];
+    return current == Media(path).uri && listEquals(queue, want);
+  }
+
+  /// Video hanya didekode saat halaman pemutar terlihat. Saat halaman ditutup (musik/
+  /// video tetap jalan di MiniPlayer), dekode video dimatikan -> CPU/GPU turun drastis.
+  Future<void> setVideoVisible(bool v) async {
+    final wasVisible = _videoVisible;
+    _videoVisible = v;
+    if (!_pauseVideoWhenHidden) return;
+    _applyVideoTrack();
+    final pl = _player;
+    // Menyalakan lagi trek video di tengah lagu membuat dekoder mulai dari frame P tanpa
+    // keyframe -> gambar pecah/blok sampai keyframe berikutnya. Seek ke posisi yang sama
+    // memaksa dekoder mulai bersih dari keyframe terdekat.
+    if (v && !wasVisible && pl != null && !_disposed && currentIsVideo) {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      if (_disposed || !_videoVisible) return;
+      final pos = pl.state.position;
+      if (pos > const Duration(seconds: 1)) await pl.seek(pos);
+    }
+  }
+
+  void _applyVideoTrack() {
+    final pl = _player;
+    if (pl == null || _disposed || !_pauseVideoWhenHidden) return;
+    pl.setVideoTrack(_videoVisible ? VideoTrack.auto() : VideoTrack.no());
   }
 
   Future<void> enqueue(List<String> paths) async {
@@ -95,6 +156,10 @@ class PlayerHub extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    position.dispose();
     _player?.dispose();
     super.dispose();
   }

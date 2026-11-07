@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../core/notify/notify.dart';
+import '../../../core/settings/settings.dart';
 import '../../archive/archive_service.dart';
 import '../../editor/code_editor_page.dart';
 import '../../editor/image_editor_page.dart';
@@ -75,7 +76,11 @@ void openItem(BuildContext ctx, WidgetRef ref, FileItem it) {
     case FileCategory.image:
       push(ImageViewerPage(path: it.path, siblings: sibs(FileCategory.image)));
     case FileCategory.video:
-      push(MediaPage(path: it.path, playlist: sibs(FileCategory.video)));
+      if (ref.read(settingsProvider).videoUsesSystemPlayer) {
+        openExternally(it.path);
+      } else {
+        push(MediaPage(path: it.path, playlist: sibs(FileCategory.video)));
+      }
     case FileCategory.audio:
       push(MediaPage(path: it.path, playlist: sibs(FileCategory.audio), audio: true));
     case FileCategory.code:
@@ -143,6 +148,10 @@ Future<void> playSelection(BuildContext ctx, WidgetRef ref) async {
   final list = selectedMediaPaths(ref);
   if (list.isEmpty) {
     ref.read(notifsProvider.notifier).push('Pilih file audio/video dulu');
+    return;
+  }
+  if (categoryOf(list.first) == FileCategory.video && ref.read(settingsProvider).videoUsesSystemPlayer) {
+    openExternally(list.first);
     return;
   }
   await ref.read(playerHubProvider).playAll(list);

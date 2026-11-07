@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -32,16 +31,23 @@ class MediaPage extends ConsumerStatefulWidget {
 class _MediaPageState extends ConsumerState<MediaPage> {
   late final PlayerHub hub = ref.read(playerHubProvider);
   bool _queue = true;
+  double? _dragMs; // posisi sementara saat slider digeser
 
   @override
   void initState() {
     super.initState();
+    hub.setVideoVisible(true);
     final path = widget.path;
     if (path != null) {
       final list = widget.playlist.isEmpty ? [path] : widget.playlist;
-      final same = hub.hasQueue && hub.current == path && listEquals(hub.queue, list);
-      if (!same) hub.playAll(list, start: max(0, list.indexOf(path)));
+      if (!hub.isSame(path, list)) hub.playAll(list, start: max(0, list.indexOf(path)));
     }
+  }
+
+  @override
+  void dispose() {
+    hub.setVideoVisible(false);
+    super.dispose();
   }
 
   String _fmt(Duration d) {
@@ -93,9 +99,9 @@ class _MediaPageState extends ConsumerState<MediaPage> {
               : LayoutBuilder(builder: (c, cs) {
                   final wide = cs.maxWidth >= 900;
                   final main = hub.currentIsVideo
-                      ? Video(controller: hub.video)
+                      ? RepaintBoundary(child: Video(controller: hub.video))
                       : _audioUi(pal, cur);
-                  final q = _queuePanel(pal);
+                  final q = RepaintBoundary(child: _queuePanel(pal));
                   return wide
                       ? Row(children: [
                           Expanded(child: main),
@@ -160,6 +166,7 @@ class _MediaPageState extends ConsumerState<MediaPage> {
 
   Widget _audioUi(Pal pal, String cur) {
     final player = hub.player;
+    final compact = MediaQuery.sizeOf(context).height < 720;
     return Center(
       child: SingleChildScrollView(
         child: ConstrainedBox(
@@ -168,12 +175,12 @@ class _MediaPageState extends ConsumerState<MediaPage> {
             padding: const EdgeInsets.all(24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(gradient: pal.gradient, borderRadius: BorderRadius.circular(34)),
-                child: const Icon(Icons.music_note_rounded, size: 88, color: Colors.white),
+                width: compact ? 110 : 200,
+                height: compact ? 110 : 200,
+                decoration: BoxDecoration(gradient: pal.gradient, borderRadius: BorderRadius.circular(compact ? 22 : 34)),
+                child: Icon(Icons.music_note_rounded, size: compact ? 48 : 88, color: Colors.white),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: compact ? 10 : 20),
               Text(p.basenameWithoutExtension(cur),
                   textAlign: TextAlign.center,
                   maxLines: 2,
@@ -181,29 +188,32 @@ class _MediaPageState extends ConsumerState<MediaPage> {
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               Text('${hub.index + 1} dari ${hub.queue.length}', style: TextStyle(color: pal.muted)),
               const SizedBox(height: 10),
-              StreamBuilder<Duration>(
-                stream: player.stream.position,
-                builder: (_, pos) => StreamBuilder<Duration>(
-                  stream: player.stream.duration,
-                  builder: (_, dur) {
-                    final total = (dur.data ?? player.state.duration).inMilliseconds.toDouble();
-                    final now = (pos.data ?? player.state.position).inMilliseconds.toDouble();
-                    return Column(children: [
-                      Slider(
-                        value: total <= 0 ? 0.0 : now.clamp(0.0, total).toDouble(),
-                        max: total <= 0 ? 1.0 : total,
-                        onChanged: (v) => player.seek(Duration(milliseconds: v.round())),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                          Text(_fmt(Duration(milliseconds: now.round())), style: TextStyle(color: pal.muted, fontSize: 12)),
-                          Text(_fmt(Duration(milliseconds: total.round())), style: TextStyle(color: pal.muted, fontSize: 12)),
-                        ]),
-                      ),
-                    ]);
-                  },
-                ),
+              ValueListenableBuilder<Duration>(
+                valueListenable: hub.position,
+                builder: (_, pos, __) {
+                  final total = player.state.duration.inMilliseconds.toDouble();
+                  final now = _dragMs ?? pos.inMilliseconds.toDouble();
+                  return Column(children: [
+                    Slider(
+                      value: total <= 0 ? 0.0 : now.clamp(0.0, total).toDouble(),
+                      max: total <= 0 ? 1.0 : total,
+                      onChanged: (v) => setState(() => _dragMs = v),
+                      onChangeEnd: (v) {
+                        final d = Duration(milliseconds: v.round());
+                        player.seek(d);
+                        hub.position.value = d;
+                        setState(() => _dragMs = null);
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        Text(_fmt(Duration(milliseconds: now.round())), style: TextStyle(color: pal.muted, fontSize: 12)),
+                        Text(_fmt(Duration(milliseconds: total.round())), style: TextStyle(color: pal.muted, fontSize: 12)),
+                      ]),
+                    ),
+                  ]);
+                },
               ),
               Row(mainAxisAlignment: MainAxisAlignment.center, children: [
                 IconButton(

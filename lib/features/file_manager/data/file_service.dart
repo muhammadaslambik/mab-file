@@ -8,8 +8,16 @@ import '../domain/file_item.dart';
 
 class FileService {
   /// Listing di Isolate dengan statSync: jauh lebih cepat & UI tidak tersendat untuk folder besar.
-  Future<List<FileItem>> list(String dir, {bool showHidden = false}) =>
-      Isolate.run(() => _listSync(dir, showHidden));
+  Future<List<FileItem>> list(String dir, {bool showHidden = false}) async {
+    try {
+      return await Isolate.run(() => _listSync(dir, showHidden));
+    } on FileSystemException {
+      rethrow; // izin/folder hilang: pesan aslinya yang ditampilkan
+    } catch (_) {
+      // Isolate gagal dibuat (mis. memori sistem hampir habis) -> jalankan langsung.
+      return _listSync(dir, showHidden);
+    }
+  }
 
   Future<void> copy(String src, String destDir) async {
     if (p.equals(src, destDir) || p.isWithin(src, destDir)) {

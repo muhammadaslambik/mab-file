@@ -31,17 +31,13 @@ class MiniPlayer extends ConsumerWidget {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               SizedBox(
                 height: 2,
-                child: StreamBuilder<Duration>(
-                  stream: player.stream.position,
-                  builder: (_, pos) => StreamBuilder<Duration>(
-                    stream: player.stream.duration,
-                    builder: (_, dur) {
-                      final total = (dur.data ?? player.state.duration).inMilliseconds;
-                      final now = (pos.data ?? player.state.position).inMilliseconds;
-                      final v = total <= 0 ? 0.0 : (now / total).clamp(0.0, 1.0).toDouble();
-                      return LinearProgressIndicator(value: v, minHeight: 2, backgroundColor: pal.border);
-                    },
-                  ),
+                child: ValueListenableBuilder<Duration>(
+                  valueListenable: hub.position,
+                  builder: (_, pos, __) {
+                    final total = player.state.duration.inMilliseconds;
+                    final v = total <= 0 ? 0.0 : (pos.inMilliseconds / total).clamp(0.0, 1.0).toDouble();
+                    return LinearProgressIndicator(value: v, minHeight: 2, backgroundColor: pal.border);
+                  },
                 ),
               ),
               SizedBox(

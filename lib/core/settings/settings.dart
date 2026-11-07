@@ -11,6 +11,7 @@ class AppSettings {
     this.animated = false,
     this.ffmpegPath = '',
     this.editorFont = 14,
+    this.videoMode = 'auto',
   });
 
   final String themeId;
@@ -18,12 +19,27 @@ class AppSettings {
   final String ffmpegPath;
   final double editorFont;
 
-  AppSettings copyWith({String? themeId, bool? animated, String? ffmpegPath, double? editorFont}) =>
+  /// 'auto' = pemutar sistem di desktop, pemutar bawaan di HP; 'system' / 'builtin' = pilihan pengguna.
+  final String videoMode;
+
+  /// Video dibuka dengan aplikasi default sistem (paling hemat CPU/GPU di desktop).
+  bool get videoUsesSystemPlayer =>
+      videoMode == 'system' ||
+      (videoMode == 'auto' && (Platform.isWindows || Platform.isLinux || Platform.isMacOS));
+
+  AppSettings copyWith({
+    String? themeId,
+    bool? animated,
+    String? ffmpegPath,
+    double? editorFont,
+    String? videoMode,
+  }) =>
       AppSettings(
         themeId: themeId ?? this.themeId,
         animated: animated ?? this.animated,
         ffmpegPath: ffmpegPath ?? this.ffmpegPath,
         editorFont: editorFont ?? this.editorFont,
+        videoMode: videoMode ?? this.videoMode,
       );
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +47,7 @@ class AppSettings {
         'animated': animated,
         'ffmpegPath': ffmpegPath,
         'editorFont': editorFont,
+        'videoMode': videoMode,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -38,6 +55,7 @@ class AppSettings {
         animated: j['animated'] as bool? ?? false,
         ffmpegPath: j['ffmpegPath'] as String? ?? '',
         editorFont: (j['editorFont'] as num?)?.toDouble() ?? 14,
+        videoMode: j['videoMode'] as String? ?? 'auto',
       );
 }
 

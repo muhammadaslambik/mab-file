@@ -168,10 +168,14 @@ class FmController extends Notifier<FmState> {
   Future<void> up() => open(p.dirname(state.path));
   Future<void> refresh() => _load(state.path);
 
+  int _loadSeq = 0;
+
   Future<bool> _load(String path) async {
+    final seq = ++_loadSeq;
     state = state.copyWith(loading: true, clearError: true);
     try {
       final items = await _fs.list(path, showHidden: state.showHidden);
+      if (seq != _loadSeq) return false; // sudah ada permintaan yang lebih baru
       state = state.copyWith(
         path: path,
         items: _sorted(items, state.sort),
@@ -182,6 +186,7 @@ class FmController extends Notifier<FmState> {
       );
       return true;
     } catch (e) {
+      if (seq != _loadSeq) return false;
       state = state.copyWith(loading: false, error: 'Gagal membuka folder: $e');
       return false;
     }
