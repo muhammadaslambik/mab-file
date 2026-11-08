@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 
+import '../../../core/utils/app_log.dart';
 import '../../../core/utils/paths.dart';
 import '../domain/file_item.dart';
 
@@ -15,6 +16,7 @@ class FileService {
       rethrow; // izin/folder hilang: pesan aslinya yang ditampilkan
     } catch (_) {
       // Isolate gagal dibuat (mis. memori sistem hampir habis) -> jalankan langsung.
+      AppLog.warn('list', 'Isolate gagal untuk $dir, memakai jalur sinkron');
       return _listSync(dir, showHidden);
     }
   }
@@ -84,6 +86,30 @@ class FileService {
           {String query = '', FileCategory? category, int limit = 1000}) =>
       Isolate.run(() => _search(root, query.toLowerCase(), category, limit));
 
+  /// Jumlah file, subfolder, dan total byte di bawah [root] (termasuk file tersembunyi).
+  /// [capped] = true bila penelusuran dihentikan di [maxEntities] (angka jadi batas bawah).
+  Future<({int files, int dirs, int bytes, bool capped})> folderStats(String root,
+          {int maxEntities = 500000}) =>
+      Isolate.run(() {
+        var files = 0, dirs = 0, bytes = 0, seen = 0;
+        var capped = false;
+        for (final e in _walk(root, skipHidden: false)) {
+          if (++seen > maxEntities) {
+            capped = true;
+            break;
+          }
+          if (e is Directory) {
+            dirs++;
+          } else if (e is File) {
+            files++;
+            try {
+              bytes += e.lengthSync();
+            } catch (_) {}
+          }
+        }
+        return (files: files, dirs: dirs, bytes: bytes, capped: capped);
+      });
+
   /// N file terbesar di bawah [root].
   Future<List<FileItem>> largest(String root, {int top = 50, int maxEntities = 120000}) =>
       Isolate.run(() {
@@ -137,7 +163,7 @@ List<FileItem> _search(String root, String q, FileCategory? cat, int limit) {
 }
 
 /// Penelusuran iteratif yang tahan terhadap folder tanpa izin.
-Iterable<FileSystemEntity> _walk(String root) sync* {
+Iterable<FileSystemEntity> _walk(String root, {bool skipHidden = true}) sync* {
   final stack = <String>[root];
   while (stack.isNotEmpty) {
     final dir = stack.removeLast();
@@ -148,7 +174,7 @@ Iterable<FileSystemEntity> _walk(String root) sync* {
       continue;
     }
     for (final c in children) {
-      if (p.basename(c.path).startsWith('.')) continue;
+      if (skipHidden && p.basename(c.path).startsWith('.')) continue;
       yield c;
       if (c is Directory) stack.add(c.path);
     }

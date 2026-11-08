@@ -40,6 +40,7 @@ class DesktopFilesPage extends ConsumerWidget {
       m[const SingleActivator(LogicalKeyboardKey.f2)] = () => renameSelected(context, ref);
       m[const SingleActivator(LogicalKeyboardKey.f5)] = c.refresh;
       m[const SingleActivator(LogicalKeyboardKey.enter)] = () => openSelected(context, ref);
+      m[const SingleActivator(LogicalKeyboardKey.enter, alt: true)] = () => propertiesSelected(context, ref);
       m[const SingleActivator(LogicalKeyboardKey.escape)] = c.clearSelection;
       m[const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true)] = c.back;
       m[const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true)] = c.forward;

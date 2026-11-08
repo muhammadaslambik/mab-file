@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/app_info.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/notify/notify.dart';
@@ -113,7 +114,7 @@ class Sidebar extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
           child: Row(children: [
-            Text('v0.3.11', style: TextStyle(color: pal.muted, fontSize: 12)),
+            Text('v$kAppVersion', style: TextStyle(color: pal.muted, fontSize: 12)),
             const Spacer(),
             const NotifBell(),
             IconButton(

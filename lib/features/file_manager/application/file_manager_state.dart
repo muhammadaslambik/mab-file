@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../core/notify/notify.dart';
+import '../../../core/utils/app_log.dart';
+import '../../../core/utils/natural_sort.dart';
 import '../../../core/utils/paths.dart';
 import '../../archive/archive_service.dart';
 import '../data/file_service.dart';
@@ -187,6 +189,7 @@ class FmController extends Notifier<FmState> {
       return true;
     } catch (e) {
       if (seq != _loadSeq) return false;
+      AppLog.warn('list', 'gagal membuka $path: $e');
       state = state.copyWith(loading: false, error: 'Gagal membuka folder: $e');
       return false;
     }
@@ -199,7 +202,7 @@ class FmController extends Notifier<FmState> {
       final r = switch (m) {
         SortMode.size => a.size.compareTo(b.size),
         SortMode.date => a.modified.compareTo(b.modified),
-        SortMode.name => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        SortMode.name => naturalCompare(a.name, b.name),
       };
       return state.asc ? r : -r;
     });
@@ -301,6 +304,7 @@ class FmController extends Notifier<FmState> {
       await job();
       await refresh();
     } catch (e) {
+      AppLog.warn('op', '$e');
       state = state.copyWith(error: '$e', loading: false);
     }
   }

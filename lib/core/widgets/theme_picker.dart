@@ -1,10 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../app_info.dart';
+import '../notify/notify.dart';
 import '../settings/settings.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_log.dart';
 
 Future<void> showThemePicker(BuildContext context) => showDialog<void>(
       context: context,
@@ -133,15 +137,27 @@ class _PickerBody extends ConsumerWidget {
           ),
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => showLicensePage(
-                context: context,
-                applicationName: 'MAB-File',
-                applicationVersion: '0.3.11',
+            child: Wrap(spacing: 8, children: [
+              TextButton.icon(
+                onPressed: () => showLicensePage(
+                  context: context,
+                  applicationName: 'MAB-File',
+                  applicationVersion: kAppVersion,
+                ),
+                icon: const Icon(Icons.description_outlined, size: 18),
+                label: const Text('Lisensi pihak ketiga'),
               ),
-              icon: const Icon(Icons.description_outlined, size: 18),
-              label: const Text('Lisensi pihak ketiga'),
-            ),
+              TextButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: AppLog.diagnostics()));
+                  ref.read(notifsProvider.notifier).push('Info diagnostik disalin',
+                      body: 'Periksa isinya (bisa memuat nama folder) sebelum dibagikan.',
+                      kind: NoteKind.success);
+                },
+                icon: const Icon(Icons.bug_report_outlined, size: 18),
+                label: const Text('Salin info diagnostik'),
+              ),
+            ]),
           ),
         ]),
         ),

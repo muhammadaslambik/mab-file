@@ -31,6 +31,7 @@ class _CodeEditorPageState extends ConsumerState<CodeEditorPage> {
   bool _loaded = false, _dirty = false, _preview = false, _running = false;
   String? _err;
   String _out = '';
+  bool _runConfirmed = false;
   double _font = 14;
 
   bool get _isMd => _ext == 'md' || _ext == 'markdown';
@@ -103,6 +104,23 @@ class _CodeEditorPageState extends ConsumerState<CodeEditorPage> {
   Future<void> _run() async {
     final r = _runner;
     if (r == null) return;
+    if (!_runConfirmed) {
+      final cmd = '${r.$1} ${[...r.$2, p.basename(widget.path)].join(' ')}';
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: const Text('Jalankan skrip ini?'),
+          content: Text('$cmd\n\nSkrip berjalan dengan hak akses akun Anda, sama seperti di terminal. '
+              'Jalankan hanya skrip yang Anda percaya.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Batal')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Jalankan')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+      _runConfirmed = true;
+    }
     if (_dirty) await _save();
     setState(() {
       _running = true;
@@ -112,7 +130,12 @@ class _CodeEditorPageState extends ConsumerState<CodeEditorPage> {
       final proc = await Process.start(r.$1, [...r.$2, p.basename(widget.path)],
           workingDirectory: p.dirname(widget.path), runInShell: Platform.isWindows);
       void add(String s) {
-        if (mounted) setState(() => _out += s);
+        if (!mounted) return;
+        setState(() {
+          _out += s;
+          // batasi keluaran agar skrip yang berisik tidak menghabiskan memori
+          if (_out.length > 200000) _out = _out.substring(_out.length - 200000);
+        });
       }
       proc.stdout.transform(utf8.decoder).listen(add);
       proc.stderr.transform(utf8.decoder).listen(add);

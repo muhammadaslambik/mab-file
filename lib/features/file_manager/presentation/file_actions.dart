@@ -19,6 +19,7 @@ import '../../viewer/viewers.dart';
 import '../application/file_manager_state.dart';
 import '../application/nav_state.dart';
 import '../domain/file_item.dart';
+import 'properties_dialog.dart';
 
 bool get isDesktopPlatform =>
     Platform.isWindows || Platform.isLinux || Platform.isMacOS;
@@ -217,6 +218,11 @@ void editSelected(BuildContext ctx, WidgetRef ref) {
   }
 }
 
+void propertiesSelected(BuildContext ctx, WidgetRef ref) {
+  final items = ref.read(fmProvider).selectedItems;
+  if (items.isNotEmpty) showProperties(ctx, items);
+}
+
 Future<void> renameSelected(BuildContext ctx, WidgetRef ref) async {
   final s = ref.read(fmProvider);
   if (s.selected.length != 1) return;
@@ -308,6 +314,7 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
       it('zip', Icons.folder_zip_outlined, 'Kompres ke ZIP'),
       if (isArchive) it('extract', Icons.unarchive_outlined, 'Ekstrak di sini'),
       it('vault', Icons.lock_outline_rounded, 'Pindah ke Vault'),
+      it('props', Icons.info_outline_rounded, 'Properti'),
       const PopupMenuDivider(),
       it('delete', Icons.delete_outline_rounded, 'Hapus'),
     ],
@@ -338,6 +345,8 @@ Future<void> showItemMenu(BuildContext ctx, WidgetRef ref, Offset pos) async {
       c.extractHere(s.selected.first);
     case 'vault':
       moveToVault(ctx, ref);
+    case 'props':
+      propertiesSelected(ctx, ref);
     case 'delete':
       deleteSelected(ctx, ref);
   }
