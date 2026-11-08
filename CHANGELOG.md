@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+- Arsip tidak lagi memuat seluruh isi ke RAM: ZIP/TAR dibuat dan diekstrak per file lewat aliran disk;
+  TAR.GZ lewat gzip streaming. Entri zip-slip kini ditolak SEBELUM ada file yang ditulis.
+  Arsip setengah jadi dihapus bila gagal.
+- Tes baru: file 6 MB utuh di ketiga format, tanpa berkas .tmp, zip-slip tanpa tulisan sebagian.
+
 ## 0.4.0
 - Log ke berkas (rotasi) + penangkap galat global; galat yang dulu ditelan kini dicatat dengan pemakaian memori.
 - Tombol "Salin info diagnostik" di dialog tema (ikon palet).

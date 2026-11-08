@@ -4,15 +4,17 @@
 > terverifikasi. Sebelum rilis berbayar, verifikasi tiap baris di pub.dev dan minta tinjauan
 > ahli hukum.
 
-Tanggal draf: 2026-11-08 · Versi aplikasi: 0.3.7
+Tanggal draf: 2026-11-08 · Diperbarui untuk versi 0.4.1
 
 ## 1. Lisensi proyek sendiri
 
-`LICENSE` saat ini berisi **MIT** (Copyright 2026 Muhammad Aslambik).
-Artinya siapa pun yang memegang kodenya boleh menyalin, memodifikasi, dan MENJUAL ulang.
-Untuk produk komersial tertutup, putuskan dulu:
-- Repo harus privat dan lisensi diganti menjadi "All rights reserved"/EULA proprietari, atau
-- Tetap MIT (model open-core) dan jual layanan/dukungan/build resmi.
+`LICENSE` berisi **PolyForm Noncommercial License 1.0.0** (Required Notice: Copyright (c) 2026
+Muhammad Aslambik). Kode ini source-available: boleh dibaca, dijalankan, dan dipelajari untuk tujuan
+nonkomersial; penggunaan komersial oleh pihak lain membutuhkan lisensi dari pemegang hak cipta.
+Pemegang hak cipta tetap bebas menjual aplikasinya sendiri atau menawarkan lisensi komersial terpisah.
+- Jangan menerima kontribusi kode dari luar tanpa perjanjian kontribusi (CLA), agar hak relisensi tetap bersih.
+- Commit lama yang pernah publik dengan lisensi MIT tetap MIT bagi yang sudah menyalinnya.
+- Lisensi dependensi tidak berubah oleh lisensi proyek ini.
 
 ## 2. Paket Dart/Flutter langsung (pubspec.yaml)
 
@@ -72,6 +74,18 @@ Cara membaca hasilnya (indikasi, bukan putusan hukum):
 - Tidak ada keduanya -> bagian FFmpeg kemungkinan LGPL. Bagian mpv sendiri tetap perlu dipastikan
   dari dokumentasi build-nya.
 Kirim daftar `--enable-...` itu agar dibaca bersama.
+
+### Hasil pemeriksaan (2026-11-08, build Windows v0.4.0)
+- DLL: `libmpv-2.dll` dari `mpv-dev-x86_64-20230924-git-652a1dd` (media_kit_libs_windows_video 1.0.11;
+  repo build upstream sudah diarsipkan, DLL berumur ~2 tahun).
+- Flag FFmpeg: TIDAK ada `--enable-gpl` dan TIDAK ada `--enable-nonfree`; ada `--enable-version3`.
+- Pernyataan lisensi di dalam DLL: libavcodec, libavfilter, libavformat, libavutil, libswresample,
+  libswscale = "LGPL version 3 or later". **FFmpeg: terkonfirmasi LGPLv3.**
+- **mpv itu sendiri: BELUM terkonfirmasi** (mpv default GPLv2+, LGPL hanya bila dibangun dengan opsi LGPL;
+  build macOS/iOS media_kit menyatakan `-Dgpl=false`, build Windows tidak ditemukan pernyataannya).
+- Rencana sebelum rilis komersial: ganti dengan build `mpv-dev-lgpl-*` dari zhongfly/mpv-winbuild
+  (README-nya menyebut varian itu libmpv LGPLv2.1+ dengan FFmpeg LGPLv3), uji kompatibilitas dengan
+  media_kit, catat versi dan hash DLL di sini, sertakan teks LGPL di halaman Tentang.
 
 Paten codec (H.264, HEVC, AAC, dll.) adalah isu terpisah dari lisensi kode; tanyakan ahli hukum
 sebelum menjual di wilayah tujuan.

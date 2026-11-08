@@ -1,13 +1,17 @@
 import 'dart:io';
 import 'dart:isolate';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/utils/paths.dart';
 
 enum ArchiveFormat { zip, tar, tarGz }
 
+/// Arsip diproses per file lewat aliran disk (tidak lagi memuat seluruh isi ke RAM):
+/// - ZIP/TAR dibuat dengan ZipFileEncoder/TarFileEncoder, file demi file.
+/// - TAR.GZ: TAR sementara lalu gzip streaming milik dart:io.
+/// - Ekstrak: InputFileStream + OutputFileStream per entri; TAR.GZ di-gunzip ke berkas sementara.
 class ArchiveService {
   Future<String> compress(List<String> paths, String destDir, ArchiveFormat f) =>
       Isolate.run(() => _compress(paths, destDir, f));
@@ -16,37 +20,68 @@ class ArchiveService {
       Isolate.run(() => _extract(archivePath, destDir));
 }
 
-String _compress(List<String> paths, String destDir, ArchiveFormat f) {
-  final archive = Archive();
+/// Pasangan (file, nama di dalam arsip). Hanya file biasa; tautan simbolik dilewati.
+Iterable<(File, String)> _entries(List<String> paths) sync* {
   for (final path in paths) {
     final parent = p.dirname(path);
-    final entities = FileSystemEntity.isDirectorySync(path)
-        ? Directory(path).listSync(recursive: true, followLinks: false)
-        : <FileSystemEntity>[File(path)];
-    for (final e in entities) {
-      if (e is! File) continue;
-      final bytes = e.readAsBytesSync();
-      final rel = p.relative(e.path, from: parent).replaceAll('\\', '/');
-      archive.addFile(ArchiveFile(rel, bytes.length, bytes));
+    if (FileSystemEntity.isDirectorySync(path)) {
+      for (final e in Directory(path).listSync(recursive: true, followLinks: false)) {
+        if (e is File) {
+          yield (e, p.relative(e.path, from: parent).replaceAll('\\', '/'));
+        }
+      }
+    } else {
+      yield (File(path), p.basename(path));
     }
   }
+}
+
+Future<String> _compress(List<String> paths, String destDir, ArchiveFormat f) async {
   final base = paths.length == 1 ? p.basenameWithoutExtension(paths.first) : 'archive';
-  late List<int> data;
-  late String ext;
-  switch (f) {
-    case ArchiveFormat.zip:
-      data = ZipEncoder().encode(archive)!;
-      ext = '.zip';
-    case ArchiveFormat.tar:
-      data = TarEncoder().encode(archive);
-      ext = '.tar';
-    case ArchiveFormat.tarGz:
-      data = GZipEncoder().encode(TarEncoder().encode(archive))!;
-      ext = '.tar.gz';
-  }
+  final ext = switch (f) {
+    ArchiveFormat.zip => '.zip',
+    ArchiveFormat.tar => '.tar',
+    ArchiveFormat.tarGz => '.tar.gz',
+  };
   final out = uniquePath(p.join(destDir, '$base$ext'));
-  File(out).writeAsBytesSync(data);
-  return out;
+  final tarTarget = f == ArchiveFormat.tarGz ? '$out.tmp' : out;
+  try {
+    if (f == ArchiveFormat.zip) {
+      final enc = ZipFileEncoder()..create(out);
+      try {
+        for (final (file, rel) in _entries(paths)) {
+          await enc.addFile(file, rel);
+        }
+      } finally {
+        await enc.close();
+      }
+    } else {
+      final enc = TarFileEncoder()..create(tarTarget);
+      try {
+        for (final (file, rel) in _entries(paths)) {
+          await enc.addFile(file, rel);
+        }
+      } finally {
+        await enc.close();
+      }
+      if (f == ArchiveFormat.tarGz) {
+        await File(tarTarget).openRead().transform(gzip.encoder).pipe(File(out).openWrite());
+      }
+    }
+    return out;
+  } catch (_) {
+    _tryDelete(out); // jangan tinggalkan arsip setengah jadi
+    rethrow;
+  } finally {
+    if (tarTarget != out) _tryDelete(tarTarget);
+  }
+}
+
+void _tryDelete(String path) {
+  try {
+    final f = File(path);
+    if (f.existsSync()) f.deleteSync();
+  } catch (_) {}
 }
 
 String _stem(String path) {
@@ -56,7 +91,7 @@ String _stem(String path) {
   return p.basenameWithoutExtension(n);
 }
 
-String _extract(String archivePath, String destDir) {
+Future<String> _extract(String archivePath, String destDir) async {
   final lower = archivePath.toLowerCase();
   final outDir = uniquePath(p.join(destDir, _stem(archivePath)));
 
@@ -64,35 +99,57 @@ String _extract(String archivePath, String destDir) {
     return _extractExternal(archivePath, outDir);
   }
 
-  final bytes = File(archivePath).readAsBytesSync();
-  Archive archive;
-  if (lower.endsWith('.zip') || lower.endsWith('.apk')) {
-    archive = ZipDecoder().decodeBytes(bytes);
-  } else if (lower.endsWith('.tar')) {
-    archive = TarDecoder().decodeBytes(bytes);
-  } else if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) {
-    archive = TarDecoder().decodeBytes(GZipDecoder().decodeBytes(bytes));
-  } else {
-    throw UnsupportedError('Format arsip tidak didukung');
-  }
-
-  Directory(outDir).createSync(recursive: true);
-  final root = p.canonicalize(outDir);
-  for (final f in archive) {
-    final target = p.canonicalize(p.join(outDir, f.name));
-    // Proteksi zip-slip: tolak path keluar dari folder tujuan
-    if (!p.isWithin(root, target)) {
-      throw FileSystemException('Entri arsip berbahaya ditolak', f.name);
-    }
-    if (f.isFile) {
-      File(target)
-        ..createSync(recursive: true)
-        ..writeAsBytesSync(f.content as List<int>);
+  InputFileStream? input;
+  String? tmpDir;
+  try {
+    final Archive archive;
+    if (lower.endsWith('.zip') || lower.endsWith('.apk')) {
+      input = InputFileStream(archivePath);
+      archive = ZipDecoder().decodeBuffer(input);
+    } else if (lower.endsWith('.tar')) {
+      input = InputFileStream(archivePath);
+      archive = TarDecoder().decodeBuffer(input);
+    } else if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) {
+      tmpDir = Directory.systemTemp.createTempSync('mabfile_tgz').path;
+      final tmpTar = p.join(tmpDir, 'a.tar');
+      await File(archivePath).openRead().transform(gzip.decoder).pipe(File(tmpTar).openWrite());
+      input = InputFileStream(tmpTar);
+      archive = TarDecoder().decodeBuffer(input);
     } else {
-      Directory(target).createSync(recursive: true);
+      throw UnsupportedError('Format arsip tidak didukung');
+    }
+
+    Directory(outDir).createSync(recursive: true);
+    final root = p.canonicalize(outDir);
+    // Proteksi zip-slip: periksa SEMUA entri dulu, sebelum satu byte pun ditulis.
+    for (final f in archive) {
+      if (!p.isWithin(root, p.canonicalize(p.join(outDir, f.name)))) {
+        throw FileSystemException('Entri arsip berbahaya ditolak', f.name);
+      }
+    }
+    for (final f in archive) {
+      final target = p.canonicalize(p.join(outDir, f.name));
+      if (f.isFile) {
+        Directory(p.dirname(target)).createSync(recursive: true);
+        final out = OutputFileStream(target);
+        try {
+          f.writeContent(out);
+        } finally {
+          await out.close();
+        }
+      } else {
+        Directory(target).createSync(recursive: true);
+      }
+    }
+    return outDir;
+  } finally {
+    await input?.close();
+    if (tmpDir != null) {
+      try {
+        Directory(tmpDir).deleteSync(recursive: true);
+      } catch (_) {}
     }
   }
-  return outDir;
 }
 
 /// RAR/7z: tidak ada decoder RAR pure-Dart. Di desktop, pakai binary `7z`/`7zz`.
