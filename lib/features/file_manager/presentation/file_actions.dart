@@ -11,6 +11,7 @@ import '../../editor/code_editor_page.dart';
 import '../../editor/image_editor_page.dart';
 import '../../editor/media_studio_page.dart';
 import '../../player/media_page.dart';
+import '../../player/native_video_page.dart';
 import '../../player/player_hub.dart';
 import '../../vault/vault_page.dart';
 import '../../viewer/office_page.dart';
@@ -59,6 +60,12 @@ Future<bool> looksLikeText(String path) async {
   }
 }
 
+/// Jeda pemutar mpv (musik di latar) sebelum membuka pemutar video lain.
+void _pauseHub(WidgetRef ref) {
+  final hub = ref.read(playerHubProvider);
+  if (hub.hasQueue) hub.player.pause();
+}
+
 /// Router pembuka file: tiap jenis punya viewer bawaan; sisanya ke aplikasi default OS.
 void openItem(BuildContext ctx, WidgetRef ref, FileItem it) {
   final c = ref.read(fmProvider.notifier);
@@ -76,10 +83,16 @@ void openItem(BuildContext ctx, WidgetRef ref, FileItem it) {
     case FileCategory.image:
       push(ImageViewerPage(path: it.path, siblings: sibs(FileCategory.image)));
     case FileCategory.video:
-      if (ref.read(settingsProvider).videoUsesSystemPlayer) {
-        openExternally(it.path);
-      } else {
-        push(MediaPage(path: it.path, playlist: sibs(FileCategory.video)));
+      {
+        final cfg = ref.read(settingsProvider);
+        if (cfg.videoUsesNative) {
+          _pauseHub(ref);
+          push(NativeVideoPage(path: it.path, playlist: sibs(FileCategory.video)));
+        } else if (cfg.videoUsesSystemPlayer) {
+          openExternally(it.path);
+        } else {
+          push(MediaPage(path: it.path, playlist: sibs(FileCategory.video)));
+        }
       }
     case FileCategory.audio:
       push(MediaPage(path: it.path, playlist: sibs(FileCategory.audio), audio: true));
@@ -150,9 +163,19 @@ Future<void> playSelection(BuildContext ctx, WidgetRef ref) async {
     ref.read(notifsProvider.notifier).push('Pilih file audio/video dulu');
     return;
   }
-  if (categoryOf(list.first) == FileCategory.video && ref.read(settingsProvider).videoUsesSystemPlayer) {
-    openExternally(list.first);
-    return;
+  if (categoryOf(list.first) == FileCategory.video) {
+    final cfg = ref.read(settingsProvider);
+    final videos = [for (final f in list) if (categoryOf(f) == FileCategory.video) f];
+    if (cfg.videoUsesNative) {
+      _pauseHub(ref);
+      Navigator.push(
+          ctx, MaterialPageRoute(builder: (_) => NativeVideoPage(path: videos.first, playlist: videos)));
+      return;
+    }
+    if (cfg.videoUsesSystemPlayer) {
+      openExternally(list.first);
+      return;
+    }
   }
   await ref.read(playerHubProvider).playAll(list);
   ref.read(notifsProvider.notifier).push('Memutar ${list.length} item', body: 'Kontrol ada di pemutar mini di bawah');

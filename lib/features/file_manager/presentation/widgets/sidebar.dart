@@ -113,7 +113,7 @@ class Sidebar extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
           child: Row(children: [
-            Text('v0.3.8', style: TextStyle(color: pal.muted, fontSize: 12)),
+            Text('v0.3.11', style: TextStyle(color: pal.muted, fontSize: 12)),
             const Spacer(),
             const NotifBell(),
             IconButton(

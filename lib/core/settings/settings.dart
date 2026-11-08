@@ -24,8 +24,11 @@ class AppSettings {
 
   /// Video dibuka dengan aplikasi default sistem (paling hemat CPU/GPU di desktop).
   bool get videoUsesSystemPlayer =>
-      videoMode == 'system' ||
-      (videoMode == 'auto' && (Platform.isWindows || Platform.isLinux || Platform.isMacOS));
+      videoMode == 'system' || (videoMode == 'auto' && (Platform.isLinux || Platform.isMacOS));
+
+  /// Mesin video Windows asli (Media Foundation). Eksperimental, hanya di Windows.
+  // Terukur (v0.3.10): GPU ~7% vs mpv ~21%. 'auto' di Windows memakai mesin Windows asli.
+  bool get videoUsesNative => Platform.isWindows && (videoMode == 'native' || videoMode == 'auto');
 
   AppSettings copyWith({
     String? themeId,

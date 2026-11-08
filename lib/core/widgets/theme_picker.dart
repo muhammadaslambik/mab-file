@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +14,11 @@ Future<void> showThemePicker(BuildContext context) => showDialog<void>(
         child: _PickerBody(),
       ),
     );
+
+String _videoChoice(String m) {
+  if (m == 'native') return Platform.isWindows ? 'native' : 'auto';
+  return const {'auto', 'system', 'builtin'}.contains(m) ? m : 'auto';
+}
 
 class _PickerBody extends ConsumerWidget {
   const _PickerBody();
@@ -98,14 +105,31 @@ class _PickerBody extends ConsumerWidget {
             value: s.animated,
             onChanged: (v) => ctl.update(s.copyWith(animated: v)),
           ),
-          SwitchListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Putar video dengan pemutar sistem'),
-            subtitle: Text('Paling hemat CPU/GPU & baterai. Musik tetap diputar di MAB-File',
-                style: TextStyle(color: pal.muted, fontSize: 12)),
-            value: s.videoUsesSystemPlayer,
-            onChanged: (v) => ctl.update(s.copyWith(videoMode: v ? 'system' : 'builtin')),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Pemutar video'),
+                  Text('Otomatis: mesin Windows di Windows, pemutar sistem di Linux/macOS, MAB (mpv) di HP.',
+                      style: TextStyle(color: pal.muted, fontSize: 12)),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              DropdownButton<String>(
+                value: _videoChoice(s.videoMode),
+                underline: const SizedBox.shrink(),
+                onChanged: (v) {
+                  if (v != null) ctl.update(s.copyWith(videoMode: v));
+                },
+                items: [
+                  const DropdownMenuItem(value: 'auto', child: Text('Otomatis')),
+                  const DropdownMenuItem(value: 'system', child: Text('Pemutar sistem')),
+                  const DropdownMenuItem(value: 'builtin', child: Text('MAB (mpv)')),
+                  if (Platform.isWindows) const DropdownMenuItem(value: 'native', child: Text('Windows asli (hemat)')),
+                ],
+              ),
+            ]),
           ),
           Align(
             alignment: Alignment.centerLeft,
@@ -113,7 +137,7 @@ class _PickerBody extends ConsumerWidget {
               onPressed: () => showLicensePage(
                 context: context,
                 applicationName: 'MAB-File',
-                applicationVersion: '0.3.8',
+                applicationVersion: '0.3.11',
               ),
               icon: const Icon(Icons.description_outlined, size: 18),
               label: const Text('Lisensi pihak ketiga'),
