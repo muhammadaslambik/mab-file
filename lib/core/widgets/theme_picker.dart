@@ -24,6 +24,9 @@ String _videoChoice(String m) {
   return const {'auto', 'system', 'builtin'}.contains(m) ? m : 'auto';
 }
 
+String _hwdecChoice(String m) =>
+    const {'default', 'auto', 'd3d11va', 'd3d11va-copy', 'no'}.contains(m) ? m : 'default';
+
 class _PickerBody extends ConsumerWidget {
   const _PickerBody();
 
@@ -135,6 +138,34 @@ class _PickerBody extends ConsumerWidget {
               ),
             ]),
           ),
+          if (Platform.isWindows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Dekode video mpv (eksperimen)'),
+                    Text('Hanya jalur mpv. Hasilnya terlihat di CPU/GPU Task Manager dan di info diagnostik.',
+                        style: TextStyle(color: pal.muted, fontSize: 12)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _hwdecChoice(s.mpvHwdec),
+                  underline: const SizedBox.shrink(),
+                  onChanged: (v) {
+                    if (v != null) ctl.update(s.copyWith(mpvHwdec: v));
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 'default', child: Text('Bawaan')),
+                    DropdownMenuItem(value: 'auto', child: Text('Otomatis mpv')),
+                    DropdownMenuItem(value: 'd3d11va', child: Text('D3D11 langsung')),
+                    DropdownMenuItem(value: 'd3d11va-copy', child: Text('D3D11 + salin')),
+                    DropdownMenuItem(value: 'no', child: Text('Perangkat lunak')),
+                  ],
+                ),
+              ]),
+            ),
           Align(
             alignment: Alignment.centerLeft,
             child: Wrap(spacing: 8, children: [

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../core/settings/settings.dart';
+import '../../core/utils/app_log.dart';
 import '../file_manager/domain/file_item.dart';
 
 /// Satu pemutar global (media_kit/libmpv) yang hidup selama aplikasi berjalan.
@@ -29,8 +31,25 @@ class PlayerHub extends ChangeNotifier {
   static const bool _pauseVideoWhenHidden = false;
   PlaylistMode mode = PlaylistMode.none;
 
+  /// Mode dekode video mpv dari pengaturan ('default' = bawaan media_kit). Eksperimen untuk
+  /// menurunkan beban GPU/CPU; hasil nyata dicatat ke log lewat [_logDecode].
+  String hwdec = 'default';
+  bool _hwdecTouched = false;
+  Timer? _logTimer;
+
   Player get player => _player ??= _create();
-  VideoController get video => _video ??= VideoController(player);
+  VideoController get video {
+    final created = _video == null;
+    final v = _video ??= VideoController(player);
+    if (created) {
+      // VideoController menetapkan hwdec-nya sendiri saat dibuat; terapkan pilihan kita sesudahnya.
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        final pl = _player;
+        if (pl != null) _applyHwdec(pl);
+      });
+    }
+    return v;
+  }
 
   Player _create() {
     final pl = Player();
@@ -40,10 +59,12 @@ class PlayerHub extends ChangeNotifier {
       try {
         await (pl.platform as dynamic).setProperty('profile', 'fast');
       } catch (_) {}
+      await _applyHwdec(pl);
     }();
     _subs.add(pl.stream.playlist.listen((_) {
       if (!_disposed) notifyListeners();
     }));
+    _subs.add(pl.stream.videoParams.listen((_) => _scheduleDecodeLog(pl)));
     var lastMs = -1000000;
     _subs.add(pl.stream.position.listen((pos) {
       if (_disposed) return;
@@ -77,9 +98,51 @@ class PlayerHub extends ChangeNotifier {
   Future<void> playAll(List<String> paths, {int start = 0}) async {
     if (paths.isEmpty) return;
     final i = start.clamp(0, paths.length - 1).toInt();
+    await _applyHwdec(player);
     await player.open(Playlist([for (final f in paths) Media(f)], index: i));
     _applyVideoTrack();
     notifyListeners();
+  }
+
+  void setHwdec(String v) {
+    hwdec = v;
+    final pl = _player;
+    if (pl != null) _applyHwdec(pl);
+  }
+
+  Future<void> _applyHwdec(Player pl) async {
+    if (_disposed) return;
+    // Kembali ke 'default' setelah pernah diubah = pulihkan nilai bawaan media_kit.
+    final want = hwdec == 'default' ? (_hwdecTouched ? 'auto-safe' : null) : hwdec;
+    if (want == null) return;
+    try {
+      await (pl.platform as dynamic).setProperty('hwdec', want);
+      _hwdecTouched = true;
+      AppLog.info('mpv', 'hwdec diatur ke $want');
+    } catch (e) {
+      AppLog.warn('mpv', 'gagal mengatur hwdec: $e');
+    }
+  }
+
+  void _scheduleDecodeLog(Player pl) {
+    _logTimer?.cancel();
+    _logTimer = Timer(const Duration(seconds: 2), () => _logDecode(pl));
+  }
+
+  /// Mencatat dekoder yang BENAR-BENAR dipakai mpv (hwdec-current: d3d11va, d3d11va-copy, atau no).
+  Future<void> _logDecode(Player pl) async {
+    if (_disposed || !currentIsVideo) return;
+    try {
+      final np = pl.platform as dynamic;
+      final cur = await np.getProperty('hwdec-current');
+      final cfg = await np.getProperty('hwdec');
+      final fmt = await np.getProperty('video-format');
+      final vo = await np.getProperty('current-vo');
+      final name = (current ?? '-').split(RegExp(r'[\\/]')).last;
+      AppLog.info('mpv', 'dekode: hwdec-current=$cur hwdec=$cfg format=$fmt vo=$vo berkas=$name');
+    } catch (e) {
+      AppLog.warn('mpv', 'gagal membaca info dekode: $e');
+    }
   }
 
   /// Apakah [path] sedang jadi item aktif dan antrean sama dengan [list]?
@@ -156,6 +219,7 @@ class PlayerHub extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _logTimer?.cancel();
     for (final sub in _subs) {
       sub.cancel();
     }
@@ -166,7 +230,8 @@ class PlayerHub extends ChangeNotifier {
 }
 
 final playerHubProvider = Provider<PlayerHub>((ref) {
-  final hub = PlayerHub();
+  final hub = PlayerHub()..hwdec = ref.read(settingsProvider).mpvHwdec;
+  ref.listen(settingsProvider.select((s) => s.mpvHwdec), (_, v) => hub.setHwdec(v));
   ref.onDispose(hub.dispose);
   return hub;
 });

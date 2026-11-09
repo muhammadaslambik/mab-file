@@ -9,6 +9,7 @@ void main() {
       ffmpegPath: 'C:/ff/ffmpeg.exe',
       editorFont: 16,
       videoMode: 'system',
+      mpvHwdec: 'd3d11va',
     );
     final r = AppSettings.fromJson(s.toJson());
     expect(r.themeId, 'porcelain');
@@ -16,6 +17,7 @@ void main() {
     expect(r.ffmpegPath, 'C:/ff/ffmpeg.exe');
     expect(r.editorFont, 16);
     expect(r.videoMode, 'system');
+    expect(r.mpvHwdec, 'd3d11va');
   });
 
   test('nilai bawaan bila JSON kosong atau rusak sebagian', () {
@@ -23,6 +25,7 @@ void main() {
     expect(s.themeId, 'aurora');
     expect(s.animated, isFalse);
     expect(s.videoMode, 'auto');
+    expect(s.mpvHwdec, 'default');
     expect(s.editorFont, 14);
     expect(AppSettings.fromJson({'editorFont': 18}).editorFont, 18.0);
   });

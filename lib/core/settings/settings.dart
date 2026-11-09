@@ -12,6 +12,7 @@ class AppSettings {
     this.ffmpegPath = '',
     this.editorFont = 14,
     this.videoMode = 'auto',
+    this.mpvHwdec = 'default',
   });
 
   final String themeId;
@@ -21,6 +22,9 @@ class AppSettings {
 
   /// 'auto' = pemutar sistem di desktop, pemutar bawaan di HP; 'system' / 'builtin' = pilihan pengguna.
   final String videoMode;
+
+  /// Eksperimen: mode dekode video jalur mpv ('default' = jangan diubah). Lihat PlayerHub.
+  final String mpvHwdec;
 
   /// Video dibuka dengan aplikasi default sistem (paling hemat CPU/GPU di desktop).
   bool get videoUsesSystemPlayer =>
@@ -36,6 +40,7 @@ class AppSettings {
     String? ffmpegPath,
     double? editorFont,
     String? videoMode,
+    String? mpvHwdec,
   }) =>
       AppSettings(
         themeId: themeId ?? this.themeId,
@@ -43,6 +48,7 @@ class AppSettings {
         ffmpegPath: ffmpegPath ?? this.ffmpegPath,
         editorFont: editorFont ?? this.editorFont,
         videoMode: videoMode ?? this.videoMode,
+        mpvHwdec: mpvHwdec ?? this.mpvHwdec,
       );
 
   Map<String, dynamic> toJson() => {
@@ -51,6 +57,7 @@ class AppSettings {
         'ffmpegPath': ffmpegPath,
         'editorFont': editorFont,
         'videoMode': videoMode,
+        'mpvHwdec': mpvHwdec,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -59,6 +66,7 @@ class AppSettings {
         ffmpegPath: j['ffmpegPath'] as String? ?? '',
         editorFont: (j['editorFont'] as num?)?.toDouble() ?? 14,
         videoMode: j['videoMode'] as String? ?? 'auto',
+        mpvHwdec: j['mpvHwdec'] as String? ?? 'default',
       );
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+- Eksperimen GPU mpv: pilihan "Dekode video mpv" di dialog tema (hanya Windows) dan pencatatan dekoder
+  yang benar-benar dipakai (`hwdec-current`) ke log, supaya penyebab beban GPU/CPU bisa diukur.
+
 ## 0.4.1
 - Arsip tidak lagi memuat seluruh isi ke RAM: ZIP/TAR dibuat dan diekstrak per file lewat aliran disk;
   TAR.GZ lewat gzip streaming. Entri zip-slip kini ditolak SEBELUM ada file yang ditulis.
