@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:video_player_win/video_player_win.dart';
 
+import '../../core/utils/app_log.dart';
 import '../viewer/viewers.dart' show openExternally;
 import 'media_page.dart';
 
@@ -82,6 +83,16 @@ class _NativeVideoPageState extends State<NativeVideoPage> {
     } catch (e) {
       c.dispose();
       if (!mounted || gen != _gen) return;
+      // Mis. AV1 tanpa ekstensi codec: mesin Windows gagal, mpv (dav1d) bisa. Beralih otomatis
+      // agar pengguna tidak berhenti di halaman galat.
+      if (File(_list[i]).existsSync()) {
+        AppLog.warn('video', 'Mesin Windows gagal ($e), beralih ke mpv: ${p.basename(_list[i])}');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => MediaPage(path: _list[i], playlist: _list)),
+        );
+        return;
+      }
       setState(() => _error = 'Video ini tidak bisa diputar oleh mesin Windows ($e).');
     }
   }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3
+- Video yang gagal di mesin Windows (mis. AV1 tanpa ekstensi codec) kini otomatis dibuka dengan mpv,
+  tidak berhenti di halaman galat; kejadiannya dicatat di log.
+- Memilih "Bawaan" pada dekode mpv memulihkan `auto` (nilai bawaan terukur), bukan `auto-safe`.
+
 ## 0.4.2
 - Eksperimen GPU mpv: pilihan "Dekode video mpv" di dialog tema (hanya Windows) dan pencatatan dekoder
   yang benar-benar dipakai (`hwdec-current`) ke log, supaya penyebab beban GPU/CPU bisa diukur.

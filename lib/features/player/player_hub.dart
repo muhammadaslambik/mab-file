@@ -112,8 +112,8 @@ class PlayerHub extends ChangeNotifier {
 
   Future<void> _applyHwdec(Player pl) async {
     if (_disposed) return;
-    // Kembali ke 'default' setelah pernah diubah = pulihkan nilai bawaan media_kit.
-    final want = hwdec == 'default' ? (_hwdecTouched ? 'auto-safe' : null) : hwdec;
+    // Kembali ke 'default' setelah pernah diubah = pulihkan nilai bawaan yang terukur di log (auto).
+    final want = hwdec == 'default' ? (_hwdecTouched ? 'auto' : null) : hwdec;
     if (want == null) return;
     try {
       await (pl.platform as dynamic).setProperty('hwdec', want);
