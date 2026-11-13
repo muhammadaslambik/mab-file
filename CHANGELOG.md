@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.5
+- Perbaikan: "Pindah ke Vault" pada FOLDER diam-diam tidak melakukan apa-apa tetapi menampilkan
+  "Dipindahkan ke Vault". Kini folder dikompres ke ZIP (streaming), dienkripsi ke Vault, dan folder asli
+  dihapus atau dibiarkan sesuai pilihan di dialog. Notifikasi menampilkan hasil nyata; kegagalan dilaporkan
+  dan dicatat di log.
+- PBKDF2 (PIN) dipindah ke Isolate agar UI tidak membeku saat membuat/membuka Vault (hasil kunci identik).
+- Perbaikan lint pada tes Vault.
+
+## 0.4.4
+- Vault: format v2 dengan enkripsi streaming per potongan 1 MiB (RAM tetap kecil untuk file besar),
+  dijalankan di Isolate. Tiap potongan terikat indeks, penanda akhir, dan header (anti tukar/potong).
+  File asli baru dihapus setelah hasil enkripsi diperiksa lengkap. Berkas v1 lama tetap terbaca.
+- Dokumen `docs/VAULT_FORMAT.md` berisi format dan batasan yang diketahui.
+- Tes baru: bolak-balik berbagai ukuran, ubah byte, potong, tukar potongan, kunci salah, format salah.
+
 ## 0.4.3
 - Video yang gagal di mesin Windows (mis. AV1 tanpa ekstensi codec) kini otomatis dibuka dengan mpv,
   tidak berhenti di halaman galat; kejadiannya dicatat di log.

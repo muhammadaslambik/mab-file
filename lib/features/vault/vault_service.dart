@@ -10,6 +10,14 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/utils/paths.dart';
+import 'vault_stream.dart';
+
+void _tryDelete(String path) {
+  try {
+    final f = File(path);
+    if (f.existsSync()) f.deleteSync();
+  } catch (_) {}
+}
 
 class VaultEntry {
   const VaultEntry(this.id, this.name);
@@ -21,7 +29,6 @@ class VaultEntry {
 /// - Cipher: AES-256-GCM (autentikasi integritas bawaan)
 /// - Biometrik: membuka kunci yang disimpan di Keychain/Keystore (flutter_secure_storage)
 class VaultService {
-  static final _kdf = Pbkdf2(macAlgorithm: Hmac.sha256(), iterations: 210000, bits: 256);
   static final _aes = AesGcm.with256bits();
   static const _check = 'mab-file-vault-v1';
   static const _secureKey = 'vault_master_key';
@@ -46,7 +53,7 @@ class VaultService {
   Future<void> setUp(String pin) async {
     if (pin.length < 4) throw ArgumentError('PIN minimal 4 digit');
     final salt = SecretKeyData.random(length: 16).bytes;
-    final key = await _kdf.deriveKeyFromPassword(password: pin, nonce: salt);
+    final key = SecretKey(await vaultDeriveKey(pin, salt));
     final box = await _aes.encrypt(utf8.encode(_check), secretKey: key);
     await (await _meta()).writeAsBytes([...salt, ...box.concatenation()]);
     await _persist(key);
@@ -56,7 +63,7 @@ class VaultService {
   Future<bool> unlockWithPin(String pin) async {
     final data = await (await _meta()).readAsBytes();
     final salt = data.sublist(0, 16);
-    final key = await _kdf.deriveKeyFromPassword(password: pin, nonce: salt);
+    final key = SecretKey(await vaultDeriveKey(pin, salt));
     try {
       final box = SecretBox.fromConcatenation(data.sublist(16),
           nonceLength: 12, macLength: 16);
@@ -102,14 +109,29 @@ class VaultService {
       SecretBox.fromConcatenation(data, nonceLength: 12, macLength: 16),
       secretKey: _key!);
 
-  /// Enkripsi file lalu hapus aslinya. (MVP: in-memory; ganti ke streaming chunk untuk file >500MB)
+  /// Enkripsi file (streaming per potongan 1 MiB, format v2) lalu hapus aslinya.
+  /// Aslinya baru dihapus setelah berkas terenkripsi ditulis penuh dan panjangnya cocok.
   Future<void> addFile(String path) async {
     _requireUnlocked();
     final dir = await _dir();
     final id = _rid();
-    await File(p.join(dir.path, '$id.enc')).writeAsBytes(await _enc(await File(path).readAsBytes()));
-    await File(p.join(dir.path, '$id.meta'))
-        .writeAsBytes(await _enc(utf8.encode(p.basename(path))));
+    final keyBytes = await _key!.extractBytes();
+    final plainLen = await File(path).length();
+    final enc = p.join(dir.path, '$id.enc2');
+    final part = '$enc.part';
+    try {
+      await vaultEncryptInIsolate(keyBytes, path, part);
+      if (await File(part).length() != vaultEncryptedLength(plainLen)) {
+        throw const FileSystemException('Berkas terenkripsi tidak lengkap; file asli dibiarkan utuh');
+      }
+      await File(part).rename(enc);
+      await File(p.join(dir.path, '$id.meta'))
+          .writeAsBytes(await _enc(utf8.encode(p.basename(path))));
+    } catch (_) {
+      _tryDelete(part);
+      _tryDelete(enc);
+      rethrow;
+    }
     await File(path).delete();
   }
 
@@ -127,16 +149,31 @@ class VaultService {
   Future<String> export(VaultEntry e, String destDir) async {
     _requireUnlocked();
     final dir = await _dir();
+    final out = uniquePath(p.join(destDir, p.basename(e.name)));
+    final v2 = File(p.join(dir.path, '${e.id}.enc2'));
+    if (await v2.exists()) {
+      final part = '$out.part';
+      try {
+        await vaultDecryptInIsolate(await _key!.extractBytes(), v2.path, part);
+        await File(part).rename(out);
+      } catch (_) {
+        _tryDelete(part);
+        rethrow;
+      }
+      return out;
+    }
+    // Berkas lama (format v1, satu blok GCM) tetap bisa dibuka.
     final data = await _dec(await File(p.join(dir.path, '${e.id}.enc')).readAsBytes());
-    final out = uniquePath(p.join(destDir, e.name));
     await File(out).writeAsBytes(Uint8List.fromList(data));
     return out;
   }
 
   Future<void> remove(VaultEntry e) async {
     final dir = await _dir();
-    await File(p.join(dir.path, '${e.id}.enc')).delete();
-    await File(p.join(dir.path, '${e.id}.meta')).delete();
+    for (final ext in ['enc', 'enc2', 'meta']) {
+      final f = File(p.join(dir.path, '${e.id}.$ext'));
+      if (await f.exists()) await f.delete();
+    }
   }
 
   void _requireUnlocked() {

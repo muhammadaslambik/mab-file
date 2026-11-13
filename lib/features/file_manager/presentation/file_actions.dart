@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../../core/notify/notify.dart';
 import '../../../core/settings/settings.dart';
+import '../../../core/utils/app_log.dart';
 import '../../archive/archive_service.dart';
 import '../../editor/code_editor_page.dart';
 import '../../editor/image_editor_page.dart';
@@ -252,17 +253,84 @@ Future<void> deleteSelected(BuildContext ctx, WidgetRef ref) async {
 
 Future<void> moveToVault(BuildContext ctx, WidgetRef ref) async {
   final v = ref.read(vaultProvider);
+  final notes = ref.read(notifsProvider.notifier);
   if (!v.unlocked) {
-    ref.read(notifsProvider.notifier).push('Buka Vault terlebih dulu', body: 'Masuk ke tab Vault dan masukkan PIN');
+    notes.push('Buka Vault terlebih dulu', body: 'Masuk ke tab Vault dan masukkan PIN');
     ref.read(navIndexProvider.notifier).set(2);
     return;
   }
   final c = ref.read(fmProvider.notifier);
-  for (final path in ref.read(fmProvider).selected) {
-    if (FileSystemEntity.typeSync(path) != FileSystemEntityType.file) continue;
-    await v.addFile(path);
+  final paths = ref.read(fmProvider).selected.toList();
+  final dirs = [
+    for (final x in paths)
+      if (FileSystemEntity.typeSync(x) == FileSystemEntityType.directory) x
+  ];
+  final files = [
+    for (final x in paths)
+      if (FileSystemEntity.typeSync(x) == FileSystemEntityType.file) x
+  ];
+  if (dirs.isEmpty && files.isEmpty) {
+    notes.push('Tidak ada yang dipindahkan', body: 'Pilih file atau folder terlebih dulu', kind: NoteKind.error);
+    return;
   }
-  ref.read(notifsProvider.notifier).push('Dipindahkan ke Vault', kind: NoteKind.success);
+
+  // true = hapus folder asli sesudah berhasil, false = biarkan, null = batal.
+  var deleteFolders = false;
+  if (dirs.isNotEmpty) {
+    final choice = await showDialog<bool>(
+      context: ctx,
+      builder: (d) => AlertDialog(
+        title: const Text('Pindahkan folder ke Vault?'),
+        content: Text(
+            '${dirs.length == 1 ? p.basename(dirs.first) : '${dirs.length} folder'} akan dikompres menjadi ZIP '
+            'lalu dienkripsi di Vault. Butuh ruang kosong sampai sekitar 2x ukuran folder di drive yang sama. '
+            'Folder asli bisa dihapus atau dibiarkan.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Batal')),
+          OutlinedButton(onPressed: () => Navigator.pop(d, false), child: const Text('Simpan folder asli')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Hapus folder asli')),
+        ],
+      ),
+    );
+    if (choice == null || !ctx.mounted) return;
+    deleteFolders = choice;
+  }
+
+  var ok = 0;
+  final failed = <String>[];
+  for (final f in files) {
+    try {
+      await v.addFile(f);
+      ok++;
+    } catch (e) {
+      AppLog.warn('vault', 'gagal memindahkan ${p.basename(f)}: $e');
+      failed.add('${p.basename(f)}: $e');
+    }
+  }
+  for (final d in dirs) {
+    // ZIP sementara dibuat di drive yang sama dengan folder (bukan C:), lalu dihapus oleh addFile.
+    final tmp = Directory(p.join(p.dirname(d), '.mabvault_${DateTime.now().millisecondsSinceEpoch}'));
+    try {
+      tmp.createSync();
+      final zip = await ArchiveService().compress([d], tmp.path, ArchiveFormat.zip);
+      await v.addFile(zip);
+      if (deleteFolders) await Directory(d).delete(recursive: true);
+      ok++;
+    } catch (e) {
+      AppLog.warn('vault', 'gagal memindahkan folder ${p.basename(d)}: $e');
+      failed.add('${p.basename(d)}: $e');
+    } finally {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+      } catch (_) {}
+    }
+  }
+  if (failed.isEmpty) {
+    notes.push('Dipindahkan ke Vault', body: '$ok item', kind: NoteKind.success);
+  } else {
+    notes.push('Sebagian gagal dipindahkan ke Vault',
+        body: '$ok berhasil, ${failed.length} gagal. ${failed.first}', kind: NoteKind.error);
+  }
   await c.refresh();
 }
 
