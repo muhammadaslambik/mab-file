@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.7
+- Perbaikan: mengeluarkan file besar dari Vault gagal di langkah terakhir (`rename`) setelah menit-menit
+  dekripsi, lalu hasilnya terhapus. Kini rename diulang beberapa kali dan, bila tetap gagal, memakai
+  salin + hapus (hasil dekripsi tidak lagi terbuang).
+- Folder tujuan ekspor yang tidak ada/kosong kini jatuh ke folder Unduhan.
+
+## 0.4.6
+- Tombol "Ukur kecepatan Vault" di dialog tema: mengukur MB/dtk nyata AES-GCM (enkripsi/dekripsi) dan ZIP
+  (bawaan vs level 0) di mesin pengguna, dicatat ke log. Dasar keputusan optimasi berikutnya.
+- Mengeluarkan file dari Vault kini memberi umpan balik (mulai, sukses dengan lokasi, atau galat) dan
+  galat dicatat di log; sebelumnya diam sampai selesai.
+
 ## 0.4.5
 - Perbaikan: "Pindah ke Vault" pada FOLDER diam-diam tidak melakukan apa-apa tetapi menampilkan
   "Dipindahkan ke Vault". Kini folder dikompres ke ZIP (streaming), dienkripsi ke Vault, dan folder asli

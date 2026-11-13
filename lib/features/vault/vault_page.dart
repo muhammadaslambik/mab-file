@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/notify/notify.dart';
+import '../../core/utils/app_log.dart';
 import '../file_manager/application/file_manager_state.dart';
 import '../file_manager/presentation/widgets/glyph.dart';
 import 'vault_service.dart';
@@ -115,7 +117,15 @@ class _VaultPageState extends ConsumerState<VaultPage> {
                       tooltip: 'Keluarkan',
                       icon: const Icon(Icons.output),
                       onPressed: () async {
-                        await _v.export(e, ref.read(fmProvider).path);
+                        final notes = ref.read(notifsProvider.notifier);
+                        notes.push('Mengeluarkan "${e.name}"…', body: 'File besar bisa memakan beberapa menit');
+                        try {
+                          final out = await _v.export(e, ref.read(fmProvider).path);
+                          notes.push('Dikeluarkan dari Vault', body: out, kind: NoteKind.success);
+                        } catch (err) {
+                          AppLog.warn('vault', 'gagal mengeluarkan ${e.name}: $err');
+                          notes.push('Gagal mengeluarkan dari Vault', body: '$err', kind: NoteKind.error);
+                        }
                         await ref.read(fmProvider.notifier).refresh();
                       },
                     ),

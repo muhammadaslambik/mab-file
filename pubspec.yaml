@@ -1,7 +1,7 @@
 name: mab_file
 description: mab-file - File manager cross-platform (Windows, Android, iOS, macOS, Linux)
 publish_to: none
-version: 0.4.5+1
+version: 0.4.7+1
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

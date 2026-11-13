@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/vault/vault_bench.dart';
 import '../app_info.dart';
 import '../notify/notify.dart';
 import '../settings/settings.dart';
@@ -187,6 +188,22 @@ class _PickerBody extends ConsumerWidget {
                 },
                 icon: const Icon(Icons.bug_report_outlined, size: 18),
                 label: const Text('Salin info diagnostik'),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  final notes = ref.read(notifsProvider.notifier);
+                  notes.push('Mengukur kecepatan…', body: 'Sekitar 15-60 detik; tunggu notifikasi hasil');
+                  try {
+                    final r = await runVaultBenchmark();
+                    AppLog.info('bench', r);
+                    notes.push('Hasil ukur kecepatan', body: r, kind: NoteKind.success);
+                  } catch (e) {
+                    AppLog.warn('bench', '$e');
+                    notes.push('Pengukuran gagal', body: '$e', kind: NoteKind.error);
+                  }
+                },
+                icon: const Icon(Icons.speed_outlined, size: 18),
+                label: const Text('Ukur kecepatan Vault'),
               ),
             ]),
           ),

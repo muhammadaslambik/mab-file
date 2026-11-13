@@ -9,8 +9,30 @@ import 'package:local_auth/local_auth.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/utils/app_log.dart';
 import '../../core/utils/paths.dart';
 import 'vault_stream.dart';
+
+/// Memindahkan berkas. Di Windows rename bisa gagal sesaat (berkas besar yang baru ditulis sedang
+/// dipindai antivirus) atau lintas drive: coba lagi beberapa kali, lalu salin + hapus.
+/// Hasil dekripsi yang sudah memakan waktu menit tidak boleh terbuang hanya karena rename.
+Future<void> _moveFile(String from, String to) async {
+  Object? last;
+  for (var i = 0; i < 5; i++) {
+    try {
+      await File(from).rename(to);
+      return;
+    } on FileSystemException catch (e) {
+      last = e;
+      await Future<void>.delayed(Duration(milliseconds: 400 * (i + 1)));
+    }
+  }
+  AppLog.warn('vault', 'rename gagal ($last); memakai salin lalu hapus');
+  await File(from).copy(to);
+  try {
+    await File(from).delete();
+  } catch (_) {}
+}
 
 void _tryDelete(String path) {
   try {
@@ -124,7 +146,7 @@ class VaultService {
       if (await File(part).length() != vaultEncryptedLength(plainLen)) {
         throw const FileSystemException('Berkas terenkripsi tidak lengkap; file asli dibiarkan utuh');
       }
-      await File(part).rename(enc);
+      await _moveFile(part, enc);
       await File(p.join(dir.path, '$id.meta'))
           .writeAsBytes(await _enc(utf8.encode(p.basename(path))));
     } catch (_) {
@@ -149,13 +171,18 @@ class VaultService {
   Future<String> export(VaultEntry e, String destDir) async {
     _requireUnlocked();
     final dir = await _dir();
-    final out = uniquePath(p.join(destDir, p.basename(e.name)));
+    // Tujuan harus folder yang ada; bila tidak (mis. beranda/kosong), pakai folder Unduhan.
+    var target = destDir;
+    if (target.isEmpty || !Directory(target).existsSync()) {
+      target = (await getDownloadsDirectory())?.path ?? target;
+    }
+    final out = uniquePath(p.join(target, p.basename(e.name)));
     final v2 = File(p.join(dir.path, '${e.id}.enc2'));
     if (await v2.exists()) {
       final part = '$out.part';
       try {
         await vaultDecryptInIsolate(await _key!.extractBytes(), v2.path, part);
-        await File(part).rename(out);
+        await _moveFile(part, out);
       } catch (_) {
         _tryDelete(part);
         rethrow;
